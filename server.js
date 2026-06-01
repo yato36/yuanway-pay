@@ -3,7 +3,11 @@ const cors = require('cors');
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
-app.use(cors({ origin: '*' }));
+app.use(cors({
+    origin: ['https://yuanway2030.com', 'https://www.yuanway2030.com'],
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 const MERCHANT_ID = "202605290003945002";
