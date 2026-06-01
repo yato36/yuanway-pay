@@ -1,16 +1,14 @@
-const express  = require('express');
-const cors     = require('cors');
+const express = require('express');
+const cors = require('cors');
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// ─────────────────────────────────────────
-//  الإعدادات
-// ─────────────────────────────────────────
 const MERCHANT_ID = "202605290003945002";
 
+// 🛠️ دالة تنظيف المفاتيح (تم الاحتفاظ بها كما هي)
 function formatKey(raw, type) {
     const clean = raw.replace(/-----.*?-----/g, '').replace(/[\r\n\s]+/g, '');
     if (!clean || clean.length < 100) return "INVALID_KEY";
@@ -56,162 +54,64 @@ jQIDAQAB`;
 //  تهيئة الـ SDK
 // ─────────────────────────────────────────
 const LLPay = new LLPaySdk({
-    env:               'sandbox',
-    sign_type:         'RSA',
+    env: 'sandbox',
+    sign_type: 'RSA',
     merchant_sign_key: formatKey(RAW_PRIVATE_KEY, 'PRIVATE KEY'),
-    ll_sign_key:       formatKey(RAW_PUBLIC_KEY,  'PUBLIC KEY'),
-    merchant_id:       MERCHANT_ID,
-    is_print_log:      true,
+    ll_sign_key: formatKey(RAW_PUBLIC_KEY, 'PUBLIC KEY'),
+    merchant_id: MERCHANT_ID,
+    is_print_log: true,
 });
 
 // ─────────────────────────────────────────
-//  Endpoint 1: جلب iframe token
-//  POST /api/get-iframe-token
-//  الدالة الصحيحة في SDK: getTokenIframe
-//  تستدعي: GET /v3/merchants/{id}/token
+// مسار 1: جلب التوكن فقط (كما طلبت في الـ HTML)
 // ─────────────────────────────────────────
 app.post('/api/get-iframe-token', (req, res) => {
-    console.log('\n📥 [get-iframe-token] طلب جديد');
-
+    console.log("📥 طلب توكن الإطار...");
     LLPay.getTokenIframe({
-        successcb(result) {
-            console.log('✅ رد getTokenIframe — verifySign:', result.verifySignResult);
-            let data;
-            try {
-                data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-            } catch {
-                return res.status(500).json({ success: false, error: 'Invalid response body' });
-            }
-
-            console.log('📦 البيانات الكاملة:', JSON.stringify(data, null, 2));
-
-            // استخراج الـ token — يكون في أحد هذه الحقول
-            const token =
-                data?.credential_token ||
-                data?.token            ||
-                data?.data?.credential_token ||
-                data?.data?.token;
-
-            if (token) {
-                console.log('🎉 Token:', token);
-                return res.json({ success: true, token });
-            }
-
-            // إذا ما وجد token، أرسل البيانات كاملة للتحليل
-            console.error('⚠️ لم يُوجد token في الرد:', data);
-            res.status(500).json({
-                success: false,
-                error: data?.return_message || 'Token not found in response',
-                raw: data,
-            });
+        successcb: (result) => {
+            let data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+            res.json({ success: true, token: data.credential_token || data.token });
         },
-        failcb(error) {
-            console.error('❌ getTokenIframe فشل:', error);
-            res.status(500).json({ success: false, error: String(error) });
-        },
+        failcb: (err) => res.status(500).json({ success: false, error: String(err) })
     });
 });
 
 // ─────────────────────────────────────────
-//  Endpoint 2: إنشاء طلب دفع (للـ iframe)
-//  POST /api/create-order
+// مسار 2: إنشاء الطلب (المسار الذي يحتاجه الـ HTML)
 // ─────────────────────────────────────────
 app.post('/api/create-order', (req, res) => {
-    const { amount = '10.00', currency = 'USD', customer = {} } = req.body;
-    const ts      = Date.now();
-    const orderId = `ORD_${ts}`;
-    const txnId   = `TXN_${ts}`;
-    const orderTime = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-
-    console.log(`\n📥 [create-order] ${orderId} — ${amount} ${currency}`);
+    console.log("📥 طلب إنشاء طلب دفع...");
+    const timeNow = Date.now();
+    const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
     const params = {
-        merchant_transaction_id: txnId,
-        notification_url: 'https://yuanway2030.com/notify.php',
-        redirect_url:     'https://yuanway2030.com/success.php',
-        cancel_url:       'https://yuanway2030.com/cancel.php',
-        country: 'US',
+        merchant_transaction_id: "TXN_" + timeNow,
+        notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
+        country: "US",
         merchant_order: {
-            merchant_order_id:   orderId,
-            merchant_order_time: orderTime,
-            order_amount:        amount,
-            order_currency_code: currency,
-            order_description:   'Yuanway Order',
-            products: [{
-                product_id: '101',
-                name:       'Yuanway Product',
-                price:      amount,
-                quantity:   1,
-                category:   'general',
-            }],
+            merchant_order_id: "ORD_" + timeNow,
+            merchant_order_time: timestamp,
+            order_amount: req.body.amount || "10.00",
+            order_currency_code: req.body.currency || "USD",
+            order_description: "Yuan Way Order",
+            products: [{ product_id: "101", name: "Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
         },
-        customer: {
-            customer_type: 'I',
-            first_name:    customer.first_name || 'Customer',
-            last_name:     customer.last_name  || 'User',
-            full_name:     customer.full_name  || 'Customer User',
-            email:         customer.email      || 'customer@yuanway2030.com',
-            phone:         customer.phone      || '+966500000000',
-            address: {
-                line1:       '4114 Sepulveda Blvd',
-                city:        'Culver City',
-                state:       'CA',
-                country:     'US',
-                postal_code: '90230',
-            },
-        },
+        customer: req.body.customer
     };
 
     LLPay.pay({
-        params,
-        successcb(result) {
-            let data;
-            try {
-                data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-            } catch {
-                return res.status(500).json({ success: false, error: 'Invalid response body' });
-            }
-
-            const paymentUrl = data?.order?.payment_url;
-            if (data.return_code === 'SUCCESS' || paymentUrl) {
-                console.log('✅ الطلب أُنشئ بنجاح — orderId:', orderId);
-                return res.json({
-                    success: true,
-                    order_id: orderId,
-                    txn_id:   txnId,
-                    payment_url: paymentUrl,
-                    data,
-                });
-            }
-            res.status(500).json({ success: false, error: data?.return_message || 'Order creation failed' });
+        params: params,
+        successcb: (result) => {
+            let data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+            res.json({ 
+                success: true, 
+                order_id: data.order?.merchant_transaction_id,
+                payment_url: data.order?.payment_url 
+            });
         },
-        failcb(error) {
-            console.error('❌ create-order فشل:', error);
-            // محاولة استخراج payment_url حتى عند فشل التوقيع
-            if (error?.body) {
-                try {
-                    const d = typeof error.body === 'string' ? JSON.parse(error.body) : error.body;
-                    if (d?.order?.payment_url) {
-                        return res.json({
-                            success: true,
-                            order_id: orderId,
-                            txn_id:   txnId,
-                            payment_url: d.order.payment_url,
-                            data: d,
-                        });
-                    }
-                } catch {}
-            }
-            res.status(500).json({ success: false, error: String(error) });
-        },
+        failcb: (err) => res.status(500).json({ success: false, error: String(err) })
     });
 });
 
-// ─────────────────────────────────────────
-//  تشغيل السيرفر
-// ─────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`\n🚀 Yuanway Payment Server — port ${PORT}`);
-    console.log(`   Merchant: ${MERCHANT_ID} | Env: sandbox\n`);
-});
+app.listen(PORT, () => console.log(`🚀 السيرفر يعمل على المنفذ ${PORT}`))
