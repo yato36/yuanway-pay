@@ -3,19 +3,23 @@ const cors = require('cors');
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
-// استبدل سطر app.use(cors...) بهذا الكود:
-app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "https://yuanway2030.com");
-    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    
-    // الأهم: التعامل مع طلبات الـ preflight (OPTIONS)
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
-    next();
-});
+
+// 1. الإذن الصريح (ضع هذا في أول سطر)
+app.use(cors({
+    origin: ['https://yuanway2030.com', 'https://www.yuanway2030.com'],
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
+
+// 2. السماح لطلبات الـ Preflight (OPTIONS)
+app.options('*', cors());
+
 app.use(express.json());
+
+// ─────────────────────────────────────────
+// (باقي الكود الخاص بك... الـ Keys والمسارات)
+// ─────────────────────────────────────────
 
 const MERCHANT_ID = "202605290003945002";
 
