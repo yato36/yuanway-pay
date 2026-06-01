@@ -1,14 +1,24 @@
 const express = require('express');
-const cors = require('cors');
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
-app.use(cors({ origin: '*' })); // السماح الشامل
+
+// 🔥 حارس الـ CORS اليدوي (لا يحتاج أي مكتبة ولن يسبب انهيار السيرفر)
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    next();
+});
+
 app.use(express.json());
 
-// مسار فحص للتأكد أن السيرفر لم يمت (مهم جداً)
+// مسار فحص للتأكد أن السيرفر حيّ (مهم جداً)
 app.get('/', (req, res) => {
-    res.send("🚀 السيرفر يعمل بنجاح ولا يوجد أي انهيار!");
+    res.send("🚀 السيرفر يعمل بنجاح! مشكلة انهيار مكتبة CORS انتهت.");
 });
 
 const MERCHANT_ID = "202605290003945002";
@@ -20,6 +30,7 @@ function formatKey(keyStr, type) {
     return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
 }
 
+// ⚠️ ضع مفتاحك الخاص والعام هنا كما كان في ملفك
 const RAW_PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
 re++V0CTOKGCBCvooWViSODim7qgH8+JW+xa0hT6eoS1jMxrNAFbuKA3sKkYvDk8
 S/U+zTDTttCv1B18QRzyuLkC5ASRpvR5jBODDayUzL2vC85AbyOP+rFkqMDfNyFy
@@ -55,9 +66,6 @@ pirxEcIkDEqjSB4oqQiqwHMCyHhxmym58vQziCG2Y+kfvCZVmFh5FteQ2krSt1Av
 dD/rbmHrBx+2WKGsTD2mUIqF8g8cmy6M5/3+wSu54A8+gEZUX4jDoF6nT7Hq1Goe
 jQIDAQAB`;
 
-// ─────────────────────────────────────────
-//  تهيئة الـ SDK
-// ─────────────────────────────────────────
 try {
     const LLPay = new LLPaySdk({
         env: 'sandbox',
@@ -118,7 +126,7 @@ try {
     console.error("🔥 خطأ قاتل أثناء تشغيل السيرفر:", error);
 }
 
-// ⚠️ الحل السحري لـ Railway: '0.0.0.0'
+// 0.0.0.0 ليعمل على Railway بدون مشاكل
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 السيرفر يعمل بنجاح على المنفذ ${PORT}`);
