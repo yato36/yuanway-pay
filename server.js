@@ -3,14 +3,19 @@ const cors = require('cors');
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
-app.use(cors({ origin: '*' })); // السماح المطلق
+app.use(cors({ origin: '*' })); // السماح الشامل
 app.use(express.json());
+
+// مسار فحص للتأكد أن السيرفر لم يمت (مهم جداً)
+app.get('/', (req, res) => {
+    res.send("🚀 السيرفر يعمل بنجاح ولا يوجد أي انهيار!");
+});
 
 const MERCHANT_ID = "202605290003945002";
 
 function formatKey(keyStr, type) {
     const clean = keyStr.replace(/-----.*?-----/g, '').replace(/[\r\n\s]+/g, '');
-    if (!clean || clean.length < 100) return "INVALID_KEY"; 
+    if (!clean || clean.length < 100) return "INVALID_KEY";
     const lines = clean.match(/.{1,64}/g).join('\n');
     return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
 }
@@ -53,66 +58,68 @@ jQIDAQAB`;
 // ─────────────────────────────────────────
 //  تهيئة الـ SDK
 // ─────────────────────────────────────────
-const config = {
-    env: 'sandbox',
-    sign_type: 'RSA',
-    merchant_sign_key: formatKey(RAW_PRIVATE_KEY, 'PRIVATE KEY'),
-    ll_sign_key: formatKey(RAW_PUBLIC_KEY, 'PUBLIC KEY'),
-    merchant_id: MERCHANT_ID,
-    is_print_log: true
-};
-
-const LLPay = new LLPaySdk(config);
-
-app.post('/api/get-iframe-token', (req, res) => {
-    console.log("📥 طلب جديد لجلب Token الخاص بـ iFrame!");
-
-    const timeNow = Date.now();
-    const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-
-    const params = {
-        merchant_transaction_id: "TXN_" + timeNow,
-        notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-        country: "US",
-        merchant_order: {
-            merchant_order_id: "ORD_" + timeNow,
-            merchant_order_time: timestamp,
-            order_amount: req.body.amount || "10.00",
-            order_currency_code: req.body.currency || "USD",
-            order_description: "Yuan Way Test Order",
-            products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
-        },
-        customer: { 
-            customer_type: "I", 
-            first_name: req.body.customer?.first_name || "Sami", 
-            last_name: req.body.customer?.last_name || "Al-Rashidi", 
-            email: req.body.customer?.email || "yuanwayco@gmail.com", 
-            phone: req.body.customer?.phone || "+201000000000"
-        }
-    };
-
-    // نستخدم LLPay.pay التي عملت بنجاح في البداية
-    LLPay.pay({
-        params: params,
-        successcb: function (result) {
-            console.log("✅ رد من LianLian وصل!");
-            let responseData;
-            try {
-                responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-            } catch (e) {
-                return res.status(500).json({ success: false, error: "Invalid response" });
-            }
-
-            // استخراج المفتاح كما ظهر لنا في السجلات قديماً
-            const iframeToken = responseData.order?.key || responseData.credential_token || responseData.token;
-            res.json({ success: true, data: responseData, token: iframeToken });
-        },
-        failcb: function (error) {
-            console.error("❌ خطأ من البوابة:", error);
-            res.status(500).json({ success: false, error: String(error) });
-        }
+try {
+    const LLPay = new LLPaySdk({
+        env: 'sandbox',
+        sign_type: 'RSA',
+        merchant_sign_key: formatKey(RAW_PRIVATE_KEY, 'PRIVATE KEY'),
+        ll_sign_key: formatKey(RAW_PUBLIC_KEY, 'PUBLIC KEY'),
+        merchant_id: MERCHANT_ID,
+        is_print_log: true
     });
-});
 
+    app.post('/api/get-iframe-token', (req, res) => {
+        console.log("📥 طلب جديد!");
+        const timeNow = Date.now();
+        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+
+        const params = {
+            merchant_transaction_id: "TXN_" + timeNow,
+            notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
+            country: "US",
+            merchant_order: {
+                merchant_order_id: "ORD_" + timeNow,
+                merchant_order_time: timestamp,
+                order_amount: req.body.amount || "10.00",
+                order_currency_code: req.body.currency || "USD",
+                order_description: "Yuan Way Test Order",
+                products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
+            },
+            customer: {
+                customer_type: "I",
+                first_name: req.body.customer?.first_name || "Sami",
+                last_name: req.body.customer?.last_name || "Al-Rashidi",
+                email: req.body.customer?.email || "yuanwayco@gmail.com",
+                phone: req.body.customer?.phone || "+201000000000"
+            }
+        };
+
+        LLPay.pay({
+            params: params,
+            successcb: function (result) {
+                console.log("✅ رد من LianLian وصل!");
+                let responseData;
+                try {
+                    responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+                } catch (e) {
+                    return res.status(500).json({ success: false, error: "Invalid response" });
+                }
+                const iframeToken = responseData.order?.key || responseData.credential_token || responseData.token;
+                res.json({ success: true, data: responseData, token: iframeToken });
+            },
+            failcb: function (error) {
+                console.error("❌ خطأ من البوابة:", error);
+                res.status(500).json({ success: false, error: String(error) });
+            }
+        });
+    });
+
+} catch (error) {
+    console.error("🔥 خطأ قاتل أثناء تشغيل السيرفر:", error);
+}
+
+// ⚠️ الحل السحري لـ Railway: '0.0.0.0'
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 السيرفر يعمل بنجاح على المنفذ ${PORT}`);
+});
