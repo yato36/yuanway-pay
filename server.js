@@ -63,17 +63,15 @@ const config = {
 
 const LLPay = new LLPaySdk(config);
 
-app.post('/api/create-payment', (req, res) => {
-    console.log("📥 وصل طلب جديد للسيرفر!");
+app.post('/api/get-iframe-token', (req, res) => {
+    console.log("📥 طلب جديد لجلب Token الخاص بـ iFrame!");
 
     const timeNow = Date.now();
     const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
     const params = {
         merchant_transaction_id: "TXN_" + timeNow,
-        notification_url: "https://yuanway2030.com/notify.php",
-        redirect_url: "https://yuanway2030.com/success.php",
-        cancel_url: "https://yuanway2030.com/cancel.php",
+        notification_url: "https://yuanway-pay.onrender.com/api/webhook/lianlian",
         country: "US",
         merchant_order: {
             merchant_order_id: "ORD_" + timeNow,
@@ -85,18 +83,10 @@ app.post('/api/create-payment', (req, res) => {
         },
         customer: { 
             customer_type: "I", 
-            first_name: "Sami", 
-            last_name: "Al-Rashidi", 
-            full_name: "Sami Al-Rashidi", 
-            email: "yuanwayco@gmail.com", 
-            phone: "+201000000000",
-            address: { 
-                line1: "4114 Sepulveda Blvd",
-                city: "Culver City",
-                state: "CA",
-                country: "US",
-                postal_code: "90230"
-            }
+            first_name: req.body.first_name || "Sami", 
+            last_name: req.body.last_name || "Al-Rashidi", 
+            email: req.body.email || "yuanwayco@gmail.com", 
+            phone: req.body.phone || "+201000000000"
         }
     };
 
@@ -107,27 +97,16 @@ app.post('/api/create-payment', (req, res) => {
             let responseData;
             try {
                 responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+                console.log("البيانات القادمة من البوابة:", responseData); // لمعرفة مكان الـ Token بالضبط
             } catch (e) {
                 return res.status(500).json({ success: false, error: "Invalid response" });
             }
 
-            let paymentUrl = responseData?.order?.payment_url;
-
-            // 🛠️ التعديل السحري: إجبار الرابط ليكون Sandbox
-            if (paymentUrl && config.env === 'sandbox') {
-                paymentUrl = paymentUrl.replace('gacashier.lianlianpay-inc.com', 'gacashier-sandbox.lianlianpay-inc.com');
-                responseData.order.payment_url = paymentUrl; 
-            }
-
-            if (paymentUrl) {
-                console.log("🎉 رابط الدفع جاهز ومعدل:", paymentUrl);
-                res.json({ success: true, data: responseData });
-            } else {
-                res.status(500).json({ success: false, error: responseData.return_message });
-            }
+            // إرسال الرد بالكامل للواجهة الأمامية لاستخراج الـ Token منها
+            res.json({ success: true, data: responseData, token: responseData.credential_token || responseData.token });
         },
         failcb: function (error) {
-            console.error("❌ خطأ:", error);
+            console.error("❌ خطأ من البوابة:", error);
             res.status(500).json({ success: false, error: String(error) });
         }
     });
