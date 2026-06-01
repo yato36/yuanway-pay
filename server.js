@@ -64,51 +64,38 @@ const config = {
 const LLPay = new LLPaySdk(config);
 
 app.post('/api/get-iframe-token', (req, res) => {
-    console.log("📥 طلب جديد لجلب Token الخاص بـ iFrame!");
+    console.log("📥 طلب جديد!");
 
     const timeNow = Date.now();
     const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
     const params = {
         merchant_transaction_id: "TXN_" + timeNow,
-        // تم تصحيح رابط الإشعارات ليطابق السيرفر الجديد
+        // تأكد من هذا الرابط:
         notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
         country: "US",
         merchant_order: {
             merchant_order_id: "ORD_" + timeNow,
             merchant_order_time: timestamp,
-            order_amount: "10.00",
-            order_currency_code: "USD",
-            order_description: "Yuan Way Test Order",
-            products: [{ product_id: "101", name: "Test Product", price: "10.00", quantity: 1, category: "test" }]
+            order_amount: req.body.amount || "10.00",
+            order_currency_code: req.body.currency || "USD",
+            order_description: "Yuan Way Order",
+            products: [{ product_id: "101", name: "Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
         },
         customer: { 
             customer_type: "I", 
-            first_name: req.body.first_name || "Sami", 
-            last_name: req.body.last_name || "Al-Rashidi", 
-            email: req.body.email || "yuanwayco@gmail.com", 
-            phone: req.body.phone || "+201000000000"
+            first_name: req.body.customer?.first_name || "Sami", 
+            last_name: req.body.customer?.last_name || "Al-Rashidi", 
+            email: req.body.customer?.email || "yuanwayco@gmail.com"
         }
     };
 
-    // ⚠️ الجزء الذي يحتاج تعديلاً في server.js
-    
-    // بدلاً من استخدام LLPay.pay (التي تجلب Cashier Key)
-    // نحتاج استخدام الدالة الخاصة بالـ Iframe. 
-    // يرجى مراجعة الدليل (Iframe Mode) لمعرفة اسم الدالة الصحيح، غالباً ستكون كالتالي:
-
-    // استخدم الدالة المخصصة لجلب الـ Iframe Token من المكتبة
-    LLPay.getIframeCredential({ 
+    // استخدام الدالة الصحيحة لجلب بيانات الـ Iframe (حسب توثيقك)
+    LLPay.getIframeCredential({ // تأكد من اسم الدالة في مكتبة SDK التي لديك (أو استخدم LLPay.pay إذا لم تكن موجودة)
         params: params,
         successcb: function (result) {
-            console.log("✅ تم جلب بيانات الـ Iframe بنجاح!");
             let responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-            
-            // هنا نرسل الـ Key أو Token للواجهة
-            res.json({ 
-                success: true, 
-                token: responseData.order?.key || responseData.credential_token 
-            });
+            res.json({ success: true, data: responseData, token: responseData.order?.key || responseData.credential_token });
         },
         failcb: function (error) {
             console.error("❌ خطأ من البوابة:", error);
