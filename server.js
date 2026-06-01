@@ -4,13 +4,22 @@ const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
 
-// 1. إعداد CORS بشكل آمن ورسمي
-app.use(cors({
-    origin: '*', 
-    methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
+// حارس CORS يدوي فائق القوة لضمان قبول الطلبات
+app.use((req, res, next) => {
+    // التقاط رابط موقعك والسماح له فوراً
+    const allowedOrigin = req.headers.origin || '*';
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
 
+    // هذه هي الخطوة الأهم: إعطاء الضوء الأخضر للمتصفح في طلبات الاستكشاف (OPTIONS)
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    
+    next();
+});
 app.use(express.json());
 
 // 2. حماية السيرفر من الانهيار: التقاط أي خطأ مميت لمنع توقف التطبيق
