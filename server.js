@@ -1,10 +1,28 @@
 const express = require('express');
-const cors = require('cors');
-const LLPaySdk = require('ga-payment-sdk');
+const LLPaySdk = require('ga-payment-sdk'); 
+// ⚠️ لاحظ: حذفنا require('cors') نهائياً لأنها سبب انهيار السيرفر
 
 const app = express();
-app.use(cors({ origin: '*' }));
+
+// 🔥 حارس الـ CORS اليدوي والنهائي (مضمون 100% ولن يسبب أي انهيار)
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*'); 
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    
+    // الرد فوراً على المتصفح للسماح بالمرور
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    next();
+});
+
 app.use(express.json());
+
+// 🟢 مسار اختبار السيرفر (مهم جداً)
+app.get('/', (req, res) => {
+    res.send("🚀 السيرفر يعمل بنجاح! مشكلة الـ CORS انتهت تماماً.");
+});
 
 const MERCHANT_ID = "202605290003945002";
 
@@ -109,5 +127,6 @@ app.post('/api/get-iframe-token', (req, res) => {
     });
 });
 
+// التعديل هنا لضمان عمل Railway بدون أي تعليق
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Yuanway Payment Server — port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Yuanway Payment Server — port ${PORT}`));
