@@ -1,34 +1,16 @@
 const express = require('express');
-const LLPaySdk = require('ga-payment-sdk'); 
-// ⚠️ لاحظ: حذفنا require('cors') نهائياً لأنها سبب انهيار السيرفر
+const cors = require('cors');
+const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
-
-// 🔥 حارس الـ CORS اليدوي والنهائي (مضمون 100% ولن يسبب أي انهيار)
-app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*'); 
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    
-    // الرد فوراً على المتصفح للسماح بالمرور
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    next();
-});
-
+app.use(cors({ origin: '*' })); // السماح المطلق
 app.use(express.json());
-
-// 🟢 مسار اختبار السيرفر (مهم جداً)
-app.get('/', (req, res) => {
-    res.send("🚀 السيرفر يعمل بنجاح! مشكلة الـ CORS انتهت تماماً.");
-});
 
 const MERCHANT_ID = "202605290003945002";
 
 function formatKey(keyStr, type) {
     const clean = keyStr.replace(/-----.*?-----/g, '').replace(/[\r\n\s]+/g, '');
-    if (!clean || clean.length < 100) return "INVALID_KEY";
+    if (!clean || clean.length < 100) return "INVALID_KEY"; 
     const lines = clean.match(/.{1,64}/g).join('\n');
     return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
 }
@@ -84,6 +66,7 @@ const LLPay = new LLPaySdk(config);
 
 app.post('/api/get-iframe-token', (req, res) => {
     console.log("📥 طلب جديد لجلب Token الخاص بـ iFrame!");
+
     const timeNow = Date.now();
     const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
@@ -99,15 +82,16 @@ app.post('/api/get-iframe-token', (req, res) => {
             order_description: "Yuan Way Test Order",
             products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
         },
-        customer: {
-            customer_type: "I",
-            first_name: req.body.customer?.first_name || "Sami",
-            last_name: req.body.customer?.last_name || "Al-Rashidi",
-            email: req.body.customer?.email || "yuanwayco@gmail.com",
+        customer: { 
+            customer_type: "I", 
+            first_name: req.body.customer?.first_name || "Sami", 
+            last_name: req.body.customer?.last_name || "Al-Rashidi", 
+            email: req.body.customer?.email || "yuanwayco@gmail.com", 
             phone: req.body.customer?.phone || "+201000000000"
         }
     };
 
+    // نستخدم LLPay.pay التي عملت بنجاح في البداية
     LLPay.pay({
         params: params,
         successcb: function (result) {
@@ -118,7 +102,10 @@ app.post('/api/get-iframe-token', (req, res) => {
             } catch (e) {
                 return res.status(500).json({ success: false, error: "Invalid response" });
             }
-            res.json({ success: true, data: responseData, token: responseData.order?.key || responseData.credential_token || responseData.token });
+
+            // استخراج المفتاح كما ظهر لنا في السجلات قديماً
+            const iframeToken = responseData.order?.key || responseData.credential_token || responseData.token;
+            res.json({ success: true, data: responseData, token: iframeToken });
         },
         failcb: function (error) {
             console.error("❌ خطأ من البوابة:", error);
@@ -127,6 +114,5 @@ app.post('/api/get-iframe-token', (req, res) => {
     });
 });
 
-// التعديل هنا لضمان عمل Railway بدون أي تعليق
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Yuanway Payment Server — port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT}`));
