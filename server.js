@@ -16,7 +16,7 @@ function formatKey(keyStr, type) {
     return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
 }
 
-// ⚠️ المفاتيح (تم الاحتفاظ بها كما هي)
+// ⚠️ المفاتيح
 const RAW_PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
 re++V0CTOKGCBCvooWViSODim7qgH8+JW+xa0hT6eoS1jMxrNAFbuKA3sKkYvDk8
 S/U+zTDTttCv1B18QRzyuLkC5ASRpvR5jBODDayUzL2vC85AbyOP+rFkqMDfNyFy
@@ -71,7 +71,8 @@ app.post('/api/get-iframe-token', (req, res) => {
 
     const params = {
         merchant_transaction_id: "TXN_" + timeNow,
-        notification_url: "https://yuanway-pay.onrender.com/api/webhook/lianlian",
+        // تم تصحيح رابط الإشعارات ليطابق السيرفر الجديد
+        notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
         country: "US",
         merchant_order: {
             merchant_order_id: "ORD_" + timeNow,
@@ -90,20 +91,24 @@ app.post('/api/get-iframe-token', (req, res) => {
         }
     };
 
-    LLPay.pay({
+    // ⚠️ الجزء الذي يحتاج تعديلاً في server.js
+    
+    // بدلاً من استخدام LLPay.pay (التي تجلب Cashier Key)
+    // نحتاج استخدام الدالة الخاصة بالـ Iframe. 
+    // يرجى مراجعة الدليل (Iframe Mode) لمعرفة اسم الدالة الصحيح، غالباً ستكون كالتالي:
+
+    // استخدم الدالة المخصصة لجلب الـ Iframe Token من المكتبة
+    LLPay.getIframeCredential({ 
         params: params,
         successcb: function (result) {
-            console.log("✅ رد من LianLian وصل!");
-            let responseData;
-            try {
-                responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                console.log("البيانات القادمة من البوابة:", responseData); // لمعرفة مكان الـ Token بالضبط
-            } catch (e) {
-                return res.status(500).json({ success: false, error: "Invalid response" });
-            }
-
-            // إرسال الرد بالكامل للواجهة الأمامية لاستخراج الـ Token منها
-            res.json({ success: true, data: responseData, token: responseData.credential_token || responseData.token });
+            console.log("✅ تم جلب بيانات الـ Iframe بنجاح!");
+            let responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+            
+            // هنا نرسل الـ Key أو Token للواجهة
+            res.json({ 
+                success: true, 
+                token: responseData.order?.key || responseData.credential_token 
+            });
         },
         failcb: function (error) {
             console.error("❌ خطأ من البوابة:", error);
