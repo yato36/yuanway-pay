@@ -1,24 +1,29 @@
 const express = require('express');
+const cors = require('cors'); // استخدام المكتبة الرسمية لتجنب تعارضات Railway
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
 
-// 🔥 حارس الـ CORS اليدوي (لا يحتاج أي مكتبة ولن يسبب انهيار السيرفر)
-app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    next();
-});
+// 1. إعداد CORS بشكل آمن ورسمي
+app.use(cors({
+    origin: '*', 
+    methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 app.use(express.json());
 
-// مسار فحص للتأكد أن السيرفر حيّ (مهم جداً)
+// 2. حماية السيرفر من الانهيار: التقاط أي خطأ مميت لمنع توقف التطبيق
+process.on('uncaughtException', (err) => {
+    console.error('🔥 [CRITICAL] خطأ غير ملتقط أدى لانهيار سابق:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 [CRITICAL] وعد غير معالج أدى لانهيار سابق:', reason);
+});
+
+// مسار فحص حالة السيرفر
 app.get('/', (req, res) => {
-    res.send("🚀 السيرفر يعمل بنجاح! مشكلة انهيار مكتبة CORS انتهت.");
+    res.send("🚀 السيرفر يعمل بنجاح ومحمي من الانهيار!");
 });
 
 const MERCHANT_ID = "202605290003945002";
@@ -30,7 +35,6 @@ function formatKey(keyStr, type) {
     return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
 }
 
-// ⚠️ ضع مفتاحك الخاص والعام هنا كما كان في ملفك
 const RAW_PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
 re++V0CTOKGCBCvooWViSODim7qgH8+JW+xa0hT6eoS1jMxrNAFbuKA3sKkYvDk8
 S/U+zTDTttCv1B18QRzyuLkC5ASRpvR5jBODDayUzL2vC85AbyOP+rFkqMDfNyFy
@@ -66,8 +70,10 @@ pirxEcIkDEqjSB4oqQiqwHMCyHhxmym58vQziCG2Y+kfvCZVmFh5FteQ2krSt1Av
 dD/rbmHrBx+2WKGsTD2mUIqF8g8cmy6M5/3+wSu54A8+gEZUX4jDoF6nT7Hq1Goe
 jQIDAQAB`;
 
+// 3. تهيئة المكتبة خارج المسارات لضمان عدم حجب المسار إذا حدث خطأ
+let LLPay;
 try {
-    const LLPay = new LLPaySdk({
+    LLPay = new LLPaySdk({
         env: 'sandbox',
         sign_type: 'RSA',
         merchant_sign_key: formatKey(RAW_PRIVATE_KEY, 'PRIVATE KEY'),
@@ -75,9 +81,20 @@ try {
         merchant_id: MERCHANT_ID,
         is_print_log: true
     });
+    console.log("✅ تم تهيئة مكتبة LianLian بنجاح");
+} catch (initError) {
+    console.error("🔥 تحذير: خطأ في تهيئة LianLian (ولكن السيرفر سيستمر بالعمل):", initError);
+}
 
-    app.post('/api/get-iframe-token', (req, res) => {
-        console.log("📥 طلب جديد!");
+// 4. المسار معزول تماماً ومحمي من الداخل
+app.post('/api/get-iframe-token', (req, res) => {
+    console.log("📥 طلب جديد وصل إلى مسار الدفع!");
+
+    try {
+        if (!LLPay) {
+            return res.status(500).json({ success: false, error: "مكتبة الدفع لم تعمل بشكل صحيح على السيرفر." });
+        }
+
         const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
@@ -102,32 +119,34 @@ try {
             }
         };
 
+        // 5. استدعاء بوابة الدفع
         LLPay.pay({
             params: params,
             successcb: function (result) {
-                console.log("✅ رد من LianLian وصل!");
-                let responseData;
+                console.log("✅ رد ناجح من LianLian!");
                 try {
-                    responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                } catch (e) {
-                    return res.status(500).json({ success: false, error: "Invalid response" });
+                    const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+                    const iframeToken = responseData.order?.key || responseData.credential_token || responseData.token;
+                    return res.json({ success: true, data: responseData, token: iframeToken });
+                } catch (parseError) {
+                    console.error("❌ فشل في قراءة بيانات البوابة:", parseError);
+                    return res.status(500).json({ success: false, error: "فشل تحليل البيانات" });
                 }
-                const iframeToken = responseData.order?.key || responseData.credential_token || responseData.token;
-                res.json({ success: true, data: responseData, token: iframeToken });
             },
             failcb: function (error) {
                 console.error("❌ خطأ من البوابة:", error);
-                res.status(500).json({ success: false, error: String(error) });
+                // إرجاع رسالة خطأ صريحة للواجهة بدلاً من ترك الطلب معلقاً
+                return res.status(400).json({ success: false, error: String(error) });
             }
         });
-    });
 
-} catch (error) {
-    console.error("🔥 خطأ قاتل أثناء تشغيل السيرفر:", error);
-}
+    } catch (routeError) {
+        console.error("🔥 خطأ مفاجئ داخل المسار:", routeError);
+        return res.status(500).json({ success: false, error: "حدث خطأ داخلي أثناء معالجة الطلب" });
+    }
+});
 
-// 0.0.0.0 ليعمل على Railway بدون مشاكل
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 السيرفر يعمل بنجاح على المنفذ ${PORT}`);
+    console.log(`🚀 السيرفر يعمل بنجاح ومحمي على المنفذ ${PORT}`);
 });
