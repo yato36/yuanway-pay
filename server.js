@@ -118,8 +118,8 @@ app.post('/api/get-iframe-token', (req, res) => {
             redirect_url: "https://yuanway2030.com/payment-methods.html",
             cancel_url: "https://yuanway2030.com/payment-methods.html",
             country: "US",
-            front_model: "iframe",      // ✅ تم التعديل إلى أحرف صغيرة
-            payment_method: "card",    // ✅ تم التعديل إلى أحرف صغيرة
+            front_model: "embed",      // جرب هذه القيمة أولاً (lowercase لقيمة embed)
+payment_method: "card",    // اتركها صغيرة كما هي لأنها نجحت وتخطت الفحص    // ✅ تم التعديل إلى أحرف صغيرة
             merchant_order: {
                 merchant_order_id: "ORD_" + timeNow,
                 merchant_order_time: timestamp,
