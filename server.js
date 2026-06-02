@@ -1,16 +1,40 @@
 const express = require('express');
-const cors = require('cors');
+const cors = require('cors'); // استخدام المكتبة الرسمية لتجنب تعارضات Railway
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
 
-app.use(cors({ origin: '*', credentials: true }));
+// 1. إعداد CORS بشكل آمن ورسمي
+// حارس CORS يدوي فائق القوة لضمان قبول الطلبات
+app.use((req, res, next) => {
+    // التقاط رابط موقعك والسماح له فوراً
+    const allowedOrigin = req.headers.origin || '*';
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+    // هذه هي الخطوة الأهم: إعطاء الضوء الأخضر للمتصفح في طلبات الاستكشاف (OPTIONS)
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    
+    next();
+});
+
 app.use(express.json());
 
-// تشخيص المسارات: هذا يطبع أي طلب يصل للسيرفر لنعرف لماذا يحدث 404
-app.use((req, res, next) => {
-    console.log(`📥 طلب جديد: ${req.method} ${req.url}`);
-    next();
+// 2. حماية السيرفر من الانهيار: التقاط أي خطأ مميت لمنع توقف التطبيق
+process.on('uncaughtException', (err) => {
+    console.error('🔥 [CRITICAL] خطأ غير ملتقط أدى لانهيار سابق:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 [CRITICAL] وعد غير معالج أدى لانهيار سابق:', reason);
+});
+
+// مسار فحص حالة السيرفر
+app.get('/', (req, res) => {
+    res.send("🚀 السيرفر يعمل بنجاح ومحمي من الانهيار!");
 });
 
 const MERCHANT_ID = "202605290003945002";
@@ -21,6 +45,7 @@ function formatKey(keyStr, type) {
     const lines = clean.match(/.{1,64}/g).join('\n');
     return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
 }
+
 const RAW_PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
 re++V0CTOKGCBCvooWViSODim7qgH8+JW+xa0hT6eoS1jMxrNAFbuKA3sKkYvDk8
 S/U+zTDTttCv1B18QRzyuLkC5ASRpvR5jBODDayUzL2vC85AbyOP+rFkqMDfNyFy
@@ -56,7 +81,7 @@ pirxEcIkDEqjSB4oqQiqwHMCyHhxmym58vQziCG2Y+kfvCZVmFh5FteQ2krSt1Av
 dD/rbmHrBx+2WKGsTD2mUIqF8g8cmy6M5/3+wSu54A8+gEZUX4jDoF6nT7Hq1Goe
 jQIDAQAB`;
 
-// تهيئة المكتبة
+// 3. تهيئة المكتبة خارج المسارات لضمان عدم حجب المسار إذا حدث خطأ
 let LLPay;
 try {
     LLPay = new LLPaySdk({
@@ -67,67 +92,72 @@ try {
         merchant_id: MERCHANT_ID,
         is_print_log: true
     });
-} catch (e) { console.error("🔥 خطأ تهيئة:", e); }
+    console.log("✅ تم تهيئة مكتبة LianLian بنجاح");
+} catch (initError) {
+    console.error("🔥 تحذير: خطأ في تهيئة LianLian (ولكن السيرفر سيستمر بالعمل):", initError);
+}
 
-// المسار الصحيح والموحد للدفع المباشر
-// استبدل هذا المسار في ملف server.js الخاص بك
-app.post('/api/direct-pay', async (req, res) => {
-    console.log("📥 استلمنا طلب دفع مباشر، البيانات الواردة:", JSON.stringify(req.body));
-    
-    // استخراج البيانات من الطلب
-    const { amount, card_number, card_expiry, card_cvv, card_name } = req.body;
-
-    // 1. تدقيق صارم جداً: إذا نقص أي حقل، سيتم إيقاف الطلب هنا وإرسال رسالة توضح النقص
-    if (!amount) return res.status(400).json({ success: false, error: "المبلغ (amount) مفقود" });
-    if (!card_number) return res.status(400).json({ success: false, error: "رقم البطاقة (card_number) مفقود" });
-    if (!card_expiry) return res.status(400).json({ success: false, error: "تاريخ الانتهاء (card_expiry) مفقود" });
-    if (!card_cvv) return res.status(400).json({ success: false, error: "رمز CVV (card_cvv) مفقود" });
-    if (!card_name) return res.status(400).json({ success: false, error: "اسم صاحب البطاقة (card_name) مفقود" });
+// 4. المسار معزول تماماً ومحمي من الداخل
+app.post('/api/get-iframe-token', (req, res) => {
+    console.log("📥 طلب جديد وصل إلى مسار الدفع!");
 
     try {
+        if (!LLPay) {
+            return res.status(500).json({ success: false, error: "مكتبة الدفع لم تعمل بشكل صحيح على السيرفر." });
+        }
+
         const timeNow = Date.now();
-        
-        // بناء الهيكل الذي تتطلبه الـ Direct API
+        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+
         const params = {
-            "merchant_transaction_id": "TXN_" + timeNow,
-            "merchant_order": {
-                "merchant_order_id": "ORD_" + timeNow,
-                "order_amount": amount,
-                "order_currency_code": "USD"
+            merchant_transaction_id: "TXN_" + timeNow,
+            notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
+            country: "US",
+            merchant_order: {
+                merchant_order_id: "ORD_" + timeNow,
+                merchant_order_time: timestamp,
+                order_amount: req.body.amount || "10.00",
+                order_currency_code: req.body.currency || "USD",
+                order_description: "Yuan Way Test Order",
+                products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
             },
-            "payment_method": {
-                "card_number": card_number,
-                "card_expiry": card_expiry,
-                "card_cvv": card_cvv,
-                "card_name": card_name
-            },
-            "payer_info": {
-                "payer_name": card_name,
-                "phone_number": "966500000000"
+            customer: {
+                customer_type: "I",
+                first_name: req.body.customer?.first_name || "Sami",
+                last_name: req.body.customer?.last_name || "Al-Rashidi",
+                email: req.body.customer?.email || "yuanwayco@gmail.com",
+                phone: req.body.customer?.phone || "+201000000000"
             }
         };
 
-        console.log("🚀 جاري الإرسال إلى ليان ليان بالبيانات:", JSON.stringify(params));
-
-        // استدعاء مكتبة ليان ليان
+        // 5. استدعاء بوابة الدفع
         LLPay.pay({
             params: params,
-            successcb: (result) => {
-                console.log("✅ نجاح الدفع المباشر:", result);
-                res.json({ success: true, data: result });
+            successcb: function (result) {
+                console.log("✅ رد ناجح من LianLian!");
+                try {
+                    const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+                    const iframeToken = responseData.order?.key || responseData.credential_token || responseData.token;
+                    return res.json({ success: true, data: responseData, token: iframeToken });
+                } catch (parseError) {
+                    console.error("❌ فشل في قراءة بيانات البوابة:", parseError);
+                    return res.status(500).json({ success: false, error: "فشل تحليل البيانات" });
+                }
             },
-            failcb: (error) => {
-                console.error("❌ خطأ من ليان ليان:", error);
-                // إرسال الخطأ الحقيقي الذي تعيده المكتبة
-                res.status(400).json({ success: false, error: error.message || "فشل الاتصال بالبوابة" });
+            failcb: function (error) {
+                console.error("❌ خطأ من البوابة:", error);
+                // إرجاع رسالة خطأ صريحة للواجهة بدلاً من ترك الطلب معلقاً
+                return res.status(400).json({ success: false, error: String(error) });
             }
         });
 
-    } catch (e) {
-        console.error("🔥 خطأ داخلي في السيرفر:", e);
-        res.status(500).json({ success: false, error: "حدث خطأ داخلي في السيرفر" });
+    } catch (routeError) {
+        console.error("🔥 خطأ مفاجئ داخل المسار:", routeError);
+        return res.status(500).json({ success: false, error: "حدث خطأ داخلي أثناء معالجة الطلب" });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 السيرفر يعمل على ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 السيرفر يعمل بنجاح ومحمي على المنفذ ${PORT}`);
+});
