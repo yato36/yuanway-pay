@@ -57,6 +57,7 @@ o0Di/MhZq4i/HDYRrtr2Ruj2UJx/Vxuy3XbtlR4X6wMFTcY8x2BjhRwoJJshKnP0
 P2zlSbjsI67A0i/23LDFvNWY4wk5jkVmyCjAvunyEUDY4mFv6aYXEkMrOiBa9m2v
 o1/KuCEgl6yMZxZ59UD0/Z7G`;
 
+// ✅ تم تعديل المفتاح العام هنا بنجاح ليتوافق مع بوابة LianLian
 const RAW_PUBLIC_KEY = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7
 ihx5ENFsq9Ta+O6YjkzfGEmjoIJCAPhJ9DPFipHZU5Xb1C2SUL81kady+xMbE2/s
 bWPN9roMhfcOWJ2ripNE1zhk9+8HbhxVOTcnbr7qZLNfcBv0ppim+R5p9kTCMzww
@@ -79,7 +80,7 @@ try {
     console.error("🔥 خطأ في تهيئة المكتبة:", initError);
 }
 
-// 1. مسار جلب التوكن (بدون تحديد طريقة الدفع لكي لا تطلب البوابة رقم البطاقة)
+// 1. مسار جلب توكن تهيئة الإطار (مع تحديد طريقة الدفع لتجهيز قواعد الأمان)
 app.post('/api/get-iframe-token', (req, res) => {
     try {
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
@@ -90,66 +91,7 @@ app.post('/api/get-iframe-token', (req, res) => {
             merchant_transaction_id: "TOK_" + serverGeneratedOrderId, 
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            // 🔥 تم حذف payment_method من هنا
-            merchant_order: {
-                merchant_order_id: serverGeneratedOrderId, 
-                merchant_order_time: timestamp,
-                order_amount: orderAmount,
-                order_currency_code: req.body.currency || "USD",
-                products: [{ 
-                    product_id: "101", 
-                    sku: "SKU_101",
-                    name: "Yuanway Session", 
-                    price: orderAmount, 
-                    quantity: 1, 
-                    category: "system",
-                    url: "https://yuanway2030.com",
-                    shipping_provider: "other" 
-                }]
-            },
-            customer: {
-                customer_type: "I",
-                first_name: req.body.customer?.first_name || "Sami",
-                last_name: req.body.customer?.last_name || "Al-Rashidi",
-                full_name: req.body.customer?.full_name || "Sami Al-Rashidi",
-                email: req.body.customer?.email || "yuanwayco@gmail.com",
-                phone: req.body.customer?.phone || "+966500000000"
-            }
-        };
-
-        LLPay.pay({
-            params: params,
-            successcb: function (result) {
-                try {
-                    const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                    const iframeToken = responseData.token || responseData.credential_token || responseData.order?.key;
-                    return res.json({ success: true, token: iframeToken, order_id: serverGeneratedOrderId });
-                } catch (e) {
-                    return res.status(500).json({ success: false, error: "فشل استخراج التوكن" });
-                }
-            },
-            failcb: function (error) {
-                return res.status(400).json({ success: false, error: String(error) });
-            }
-        });
-    } catch (err) {
-        return res.status(500).json({ success: false, error: "خطأ داخلي" });
-    }
-});
-
-// 2. مسار السحب المالي (هنا فقط نحدد طريقة الدفع ونرسل التوكن)
-// 1. مسار جلب التوكن (تحديد نوع الدفع هنا إلزامي لتهيئة قواعد الإطار داخلياً)
-app.post('/api/get-iframe-token', (req, res) => {
-    try {
-        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-        const orderAmount = Number(req.body.amount) || 10.00;
-        const serverGeneratedOrderId = "ORD_" + Date.now();
-
-        const params = {
-            merchant_transaction_id: "TOK_" + serverGeneratedOrderId, 
-            notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-            country: "US",
-            payment_method: "inter_credit_card", // ✅ تم إعادتها هنا، لن تطلب رقم البطاقة بل ستهيئ الإطار فقط!
+            payment_method: "inter_credit_card", 
             merchant_order: {
                 merchant_order_id: serverGeneratedOrderId, 
                 merchant_order_time: timestamp,
@@ -193,6 +135,82 @@ app.post('/api/get-iframe-token', (req, res) => {
         });
     } catch (err) {
         return res.status(500).json({ success: false, error: "خطأ داخلي" });
+    }
+});
+
+// 2. مسار السحب المالي الفعلي (تم إعادته وتعديله ليعمل بانسجام مع التوكن المستلم)
+app.post('/api/process-payment', (req, res) => {
+    try {
+        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+        const orderAmount = Number(req.body.amount) || 10.00;
+        const targetOrderId = req.body.order_id || ("ORD_" + Date.now());
+
+        const params = {
+            merchant_transaction_id: "PAY_" + targetOrderId,
+            merchant_id: MERCHANT_ID,
+            notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
+            country: "US",
+            payment_method: "inter_credit_card", 
+            merchant_order: {
+                merchant_order_id: targetOrderId, 
+                merchant_order_time: timestamp,
+                order_amount: orderAmount,
+                order_currency_code: req.body.currency || "USD",
+                products: [{ 
+                    product_id: "101", 
+                    sku: "SKU_101", 
+                    name: "Yuanway Order", 
+                    price: orderAmount, 
+                    quantity: 1, 
+                    category: "E-commerce",
+                    url: "https://yuanway2030.com",
+                    shipping_provider: "other" 
+                }]
+            },
+            customer: {
+                customer_type: "I",
+                first_name: req.body.customer?.first_name || "Sami",
+                last_name: req.body.customer?.last_name || "Al-Rashidi",
+                full_name: req.body.customer?.full_name || "Sami Al-Rashidi",
+                email: req.body.customer?.email || "yuanwayco@gmail.com"
+            },
+            payment_data: {
+                card: {
+                    card_token: req.body.card_token, 
+                    holder_name: req.body.holder_name || "Sami Al-Rashidi" 
+                },
+                installments: 1
+            },
+            terminal_data: { 
+                user_order_ip: "127.0.0.1",
+                user_client_browser_accept_header: "*/*",
+                user_client_browser_color_depth: 24,
+                user_client_browser_java_enabled: false,
+                user_client_browser_js_enabled: true,
+                user_client_browser_language: "ar",
+                user_client_browser_screen_height: 1080,
+                user_client_browser_screen_width: 1920,
+                user_client_browser_time_zone_offset: "180",
+                user_client_browser_user_agent: "Mozilla/5.0"
+            }
+        };
+
+        LLPay.pay({
+            params: params,
+            successcb: function (result) {
+                try {
+                    const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+                    return res.json({ success: true, data: responseData });
+                } catch (e) {
+                    return res.status(500).json({ success: false, error: "فشل تحليل رد العملية" });
+                }
+            },
+            failcb: function (error) {
+                return res.status(400).json({ success: false, error: String(error) });
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: "خطأ فني في السيرفر" });
     }
 });
 
