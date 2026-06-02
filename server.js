@@ -1,5 +1,4 @@
 const express = require('express');
-const cors = require('cors');
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
@@ -30,7 +29,6 @@ function formatKey(keyStr, type) {
     return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
 }
 
-// ضع مفاتيحك الطويلة هنا كما كانت
 const RAW_PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
 re++V0CTOKGCBCvooWViSODim7qgH8+JW+xa0hT6eoS1jMxrNAFbuKA3sKkYvDk8
 S/U+zTDTttCv1B18QRzyuLkC5ASRpvR5jBODDayUzL2vC85AbyOP+rFkqMDfNyFy
@@ -81,86 +79,152 @@ try {
     console.error("🔥 فشل تهيئة SDK:", e);
 }
 
-// دالة الوقت بالتنسيق الدقيق المطلوب من البوابة
+// helper: timestamp بصيغة YYYYMMDDHHmmss
 function makeTimestamp() {
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
-    return now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) +
-           pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+    return now.getFullYear()
+        + pad(now.getMonth() + 1)
+        + pad(now.getDate())
+        + pad(now.getHours())
+        + pad(now.getMinutes())
+        + pad(now.getSeconds());
 }
 
-// مسار الدفع النظيف
+// ============================================================
+// المسار الرئيسي: يولد iframe token بطريقتين بالتسلسل:
+//   1) getTokenIframe()  →  يرجع credential_token (مفتاح الـ iframe)
+//   2) pay()             →  ينشئ الطلب ويربطه بالـ token
+// ============================================================
 app.post('/api/get-iframe-token', (req, res) => {
-    console.log("📥 طلب iframe token جديد ورد للسيرفر");
+    console.log("📥 طلب iframe token جديد");
 
     if (!LLPay) return res.status(500).json({ success: false, error: "SDK غير مهيأ" });
 
-    // استخراج البيانات القادمة من المتصفح بأمان
-    const payerName  = req.body.customer?.name  || "Sami Alrashidi";
-    const payerPhone = req.body.customer?.phone || "966500000000";
-    const payerEmail = req.body.customer?.email || "yuanwayco@gmail.com";
-    const amount     = req.body.amount || "2000.10";
-    const currency   = req.body.currency || "USD";
-    
-    const ts = makeTimestamp();
-    const uniqueId = Date.now().toString().slice(-6);
+    const payerName  = req.body.payer_name || "Sami Alrashidi";
+    const payerPhone = req.body.phone      || "966500000000";
+    const payerEmail = req.body.email      || "yuanwayco@gmail.com";
+    const amount     = req.body.amount     || "200.10";
+    const currency   = req.body.currency   || "USD";
 
-    // 🚨 الهيكل المبسط والمثالي لمنع خطأ INVALID_PARAMETER
-    const payParams = {
-        merchant_transaction_id: "TXN_" + ts + uniqueId,
-        notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-        country: "US",
-        merchant_order: {
-            merchant_order_id: "ORD_" + ts + uniqueId,
-            merchant_order_time: ts,
-            order_amount: amount,
-            order_currency_code: currency,
-            order_description: "Yuanway Test Order",
-            products: [{
-                product_id: "101",
-                name: "Yuanway Product",
-                price: amount,
-                quantity: 1 // يجب أن يكون رقماً وليس نصاً لمنع الأخطاء
-            }]
-        },
-        payer_info: {
-            payer_type: "USER",
-            payer_id: "USER_" + uniqueId,
-            payer_name: payerName,
-            payer_email: payerEmail,
-            payer_phone: payerPhone
-        },
-        // 🚨 هذان الحقلان هما اللذان سيمنعان خطأ الواجهة الأمامية
-        payment_method: "CARD",
-        front_model: "iframe"
-    };
-
-    // نستخدم pay() مباشرة لأنها تقوم بتوليد التوكن الخاص بالإطار تلقائياً
-    LLPay.pay({
-        params: payParams,
-        successcb: function(payResult) {
+    // ── الخطوة 1: نجيب الـ iframe credential_token أولاً ──
+    LLPay.getTokenIframe({
+        params: {},
+        successcb: function(tokenResult) {
             try {
-                const payData = typeof payResult.body === 'string' ? JSON.parse(payResult.body) : payResult.body;
-                console.log("✅ رد الدفع ناجح:", JSON.stringify(payData));
+                const tokenData = typeof tokenResult.body === 'string'
+                    ? JSON.parse(tokenResult.body) : tokenResult.body;
 
-                // استخراج التوكن الخاص بالإطار
-                const iframeToken = payData?.order?.key || payData?.credential_token || payData?.token;
-                return res.json({ success: true, data: payData, token: iframeToken });
+                console.log("✅ getTokenIframe رد:", JSON.stringify(tokenData));
+
+                // credential_token هو الـ key اللي يستخدمه llpay.min.js
+                const credentialToken = tokenData.credential_token || tokenData.token || tokenData.key;
+
+                // ── الخطوة 2: ننشئ الطلب بـ pay() ──
+                const ts  = makeTimestamp();
+                const tid = ts + String(Date.now()).slice(-4);
+
+                // ✅ merchant_order_id فريد: timestamp كامل + آخر 6 أرقام من milliseconds
+                const orderId = "ORD" + ts + String(Date.now()).slice(-6);
+
+                const payParams = {
+                    merchant_transaction_id: tid,
+                    notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
+                    redirect_url:     "https://yuanway2030.com/payment-methods.html",
+                    cancel_url:       "https://yuanway2030.com/payment-methods.html",
+                    country:          "US",
+                    merchant_order: {
+                        merchant_order_id:   orderId,   // ✅ إصلاح: ID فريد دائماً
+                        merchant_order_time: ts,
+                        order_amount:        amount,
+                        order_currency_code: currency,
+                        order_description:   "Yuan Way Order",
+                        products: [{
+                            product_id:        "101",
+                            name:              "Yuanway Product",
+                            price:             amount,
+                            quantity:          "1",
+                            sku:               "SKU_101",
+                            url:               "https://yuanway2030.com",
+                            shipping_provider: "other"
+                        }],
+                        shipping: {
+                            name:    payerName,
+                            phone:   payerPhone,
+                            cycle:   "48h",
+                            address: {
+                                line1:       "123 Main Street",
+                                city:        "Riyadh",
+                                state:       "Riyadh",
+                                country:     "SA",
+                                postal_code: "11564"
+                            }
+                        }
+                    },
+                    customer:          { email: payerEmail },
+                    payer: {
+                        payer_id:     "USER_" + String(Date.now()).slice(-8),
+                        payer_name:   payerName,
+                        phone_number: payerPhone,
+                        email:        payerEmail
+                    },
+                    terminal_data:     {},
+                    payment_method:    "CARD",     // ✅ إصلاح: كان null
+                    front_model:       "IFRAME",   // ✅ تم التعديل إلى IFRAME هنا
+                    payment_data:      { installments: "1" },
+                    subscription_data: null,
+                    biz_code:          null,
+                    additional_info:   null
+                };
+
+                LLPay.pay({
+                    params: payParams,
+                    successcb: function(payResult) {
+                        try {
+                            const payData = typeof payResult.body === 'string'
+                                ? JSON.parse(payResult.body) : payResult.body;
+
+                            console.log("✅ pay() رد:", JSON.stringify(payData));
+
+                            // الـ token للـ iframe: إما من getTokenIframe أو من order.key
+                            const iframeToken = payData?.order?.key
+                                             || credentialToken
+                                             || payData?.credential_token
+                                             || payData?.token;
+
+                            console.log("🎯 iframeToken النهائي:", iframeToken);
+                            return res.json({ success: true, data: payData, token: iframeToken });
+                        } catch(e) {
+                            console.error("❌ فشل تحليل رد pay():", e);
+                            return res.status(500).json({ success: false, error: "فشل تحليل البيانات" });
+                        }
+                    },
+                    failcb: function(err) {
+                        console.error("❌ pay() فشل:", err);
+                        // إذا فشل pay()، نرجع credential_token على الأقل
+                        if (credentialToken) {
+                            console.log("⚠️ نستخدم credential_token من getTokenIframe");
+                            return res.json({ success: true, data: tokenData, token: credentialToken });
+                        }
+                        return res.status(400).json({ success: false, error: String(err) });
+                    }
+                });
+
             } catch(e) {
-                console.error("❌ فشل تحليل الرد:", e);
-                return res.status(500).json({ success: false, error: "فشل التحليل الداخلي" });
+                console.error("❌ فشل تحليل رد getTokenIframe:", e);
+                return res.status(500).json({ success: false, error: "فشل تحليل token" });
             }
         },
         failcb: function(err) {
-            console.error("❌ فشل من البوابة:", err);
+            console.error("❌ getTokenIframe فشل:", err);
             return res.status(400).json({ success: false, error: String(err) });
         }
     });
 });
 
-// ======= مسار إشعارات البوابة (Webhook) =======
+// ======= Webhook =======
 app.post('/api/webhook/lianlian', (req, res) => {
-    console.log("📨 Webhook:", JSON.stringify(req.body));
+    console.log("📨 Webhook:", JSON.stringify(req.body).slice(0, 300));
     res.status(200).json({ code: "0000", message: "success" });
 });
 
