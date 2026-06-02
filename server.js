@@ -19,7 +19,7 @@ app.use(express.json());
 process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط:', err));
 process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج:', reason));
 
-app.get('/', (req, res) => res.send("🚀 السيرفر يعمل ومؤمن بالكامل بنظام توليد المعرفات الداخلي!"));
+app.get('/', (req, res) => res.send("🚀 السيرفر يعمل ومستعد للمرحلة الأخيرة!"));
 
 const MERCHANT_ID = "202605290003945002";
 
@@ -79,40 +79,39 @@ try {
     console.error("🔥 خطأ في تهيئة المكتبة:", initError);
 }
 
-// 1. طلب توكن الإطار
+// 1. مسار جلب التوكن (بدون تحديد طريقة الدفع لكي لا تطلب البوابة رقم البطاقة)
 app.post('/api/get-iframe-token', (req, res) => {
     try {
-        const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
         const orderAmount = Number(req.body.amount) || 10.00;
-        const serverGeneratedOrderId = "ORD_" + timeNow;
+        const serverGeneratedOrderId = "ORD_" + Date.now();
 
         const params = {
             merchant_transaction_id: "TOK_" + serverGeneratedOrderId, 
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            payment_method: "inter_credit_card",
+            // 🔥 تم حذف payment_method من هنا
             merchant_order: {
                 merchant_order_id: serverGeneratedOrderId, 
                 merchant_order_time: timestamp,
                 order_amount: orderAmount,
                 order_currency_code: req.body.currency || "USD",
-                order_description: "Yuanway Session Init",
                 products: [{ 
                     product_id: "101", 
                     sku: "SKU_101",
-                    name: "Yuanway Order", 
+                    name: "Yuanway Session", 
                     price: orderAmount, 
                     quantity: 1, 
-                    category: "E-commerce",
-                    url: "https://yuanway2030.com", // 🔥 تمت الإضافة هنا لترضى البوابة
+                    category: "system",
+                    url: "https://yuanway2030.com",
                     shipping_provider: "other" 
                 }]
             },
             customer: {
                 customer_type: "I",
                 first_name: req.body.customer?.first_name || "Sami",
-                last_name: req.body.customer?.last_name || "Alrashidi",
+                last_name: req.body.customer?.last_name || "Al-Rashidi",
+                full_name: req.body.customer?.full_name || "Sami Al-Rashidi",
                 email: req.body.customer?.email || "yuanwayco@gmail.com",
                 phone: req.body.customer?.phone || "+966500000000"
             }
@@ -138,21 +137,19 @@ app.post('/api/get-iframe-token', (req, res) => {
     }
 });
 
-// 2. طلب السحب المالي النهائي
+// 2. مسار السحب المالي (هنا فقط نحدد طريقة الدفع ونرسل التوكن)
 app.post('/api/process-payment', (req, res) => {
     try {
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
         const orderAmount = Number(req.body.amount) || 10.00;
-        const targetOrderId = req.body.order_id || ("ORD_BACK_" + Date.now());
+        const targetOrderId = req.body.order_id || ("ORD_" + Date.now());
 
         const params = {
             merchant_transaction_id: "PAY_" + targetOrderId,
             merchant_id: MERCHANT_ID,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-            redirect_url: "https://yuanway2030.com/payment-methods.html",
-            cancel_url: "https://yuanway2030.com/payment-methods.html",
             country: "US",
-            payment_method: "inter_credit_card", 
+            payment_method: "inter_credit_card", // 🔥 هنا مكانها الصحيح فقط
             merchant_order: {
                 merchant_order_id: targetOrderId, 
                 merchant_order_time: timestamp,
@@ -163,7 +160,7 @@ app.post('/api/process-payment', (req, res) => {
                     sku: "SKU_101", 
                     name: "Yuanway Order", 
                     price: orderAmount, 
-                    quantity: 1,
+                    quantity: 1, 
                     category: "E-commerce",
                     url: "https://yuanway2030.com",
                     shipping_provider: "other" 
@@ -172,14 +169,14 @@ app.post('/api/process-payment', (req, res) => {
             customer: {
                 customer_type: "I",
                 first_name: req.body.customer?.first_name || "Sami",
-                last_name: req.body.customer?.last_name || "Alrashidi",
-                full_name: req.body.customer?.full_name || "Sami Alrashidi",
+                last_name: req.body.customer?.last_name || "Al-Rashidi",
+                full_name: req.body.customer?.full_name || "Sami Al-Rashidi",
                 email: req.body.customer?.email || "yuanwayco@gmail.com"
             },
             payment_data: {
                 card: {
                     card_token: req.body.card_token, 
-                    holder_name: req.body.holder_name || "Sami Alrashidi" 
+                    holder_name: req.body.holder_name || "Sami Al-Rashidi" 
                 },
                 installments: 1
             },
