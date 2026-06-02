@@ -120,19 +120,19 @@ app.post('/api/get-iframe-token', (req, res) => {
                 order_description: "Yuan Way Test Order",
                 products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
             },
-            // [تمت الإضافة] كائن payer_info: هذا هو الكائن الذي تبحث عنه بوابة LianLian لتجنب خطأ front model invalid
+            // [تمت الإضافة والتعديل] استخدمنا الحروف الإنجليزية لتجنب خطأ front model invalid بسبب الحروف العربية
             payer_info: {
                 payer_type: "USER",
                 payer_id: "USER_" + timeNow,
-                payer_name: req.body.customer?.full_name || "سامي ثاري صالح الرشيدي",
+                payer_name: req.body.customer?.full_name || "Sami Alrashidi",
                 payer_email: req.body.customer?.email || "yuanwayco@gmail.com",
                 payer_phone: req.body.customer?.phone || "966500000000"
             },
-            // نبقي على customer لتوافق المكتبة في حال كانت تحتاجها داخلياً
+            // نبقي على customer لتوافق المكتبة في حال كانت تحتاجها داخلياً (باللغة الإنجليزية أيضاً)
             customer: {
                 customer_type: "I",
-                first_name: req.body.customer?.first_name || "سامي",
-                last_name: req.body.customer?.last_name || "الرشيدي",
+                first_name: req.body.customer?.first_name || "Sami",
+                last_name: req.body.customer?.last_name || "Alrashidi",
                 email: req.body.customer?.email || "yuanwayco@gmail.com",
                 phone: req.body.customer?.phone || "966500000000"
             }
