@@ -70,37 +70,63 @@ try {
 } catch (e) { console.error("🔥 خطأ تهيئة:", e); }
 
 // المسار الصحيح والموحد للدفع المباشر
+// استبدل هذا المسار في ملف server.js الخاص بك
 app.post('/api/direct-pay', async (req, res) => {
+    console.log("📥 استلمنا طلب دفع مباشر، البيانات الواردة:", JSON.stringify(req.body));
+    
+    // استخراج البيانات من الطلب
     const { amount, card_number, card_expiry, card_cvv, card_name } = req.body;
 
-    if (!amount || !card_number) {
-        return res.status(400).json({ success: false, error: "بيانات ناقصة" });
+    // 1. تدقيق صارم جداً: إذا نقص أي حقل، سيتم إيقاف الطلب هنا وإرسال رسالة توضح النقص
+    if (!amount) return res.status(400).json({ success: false, error: "المبلغ (amount) مفقود" });
+    if (!card_number) return res.status(400).json({ success: false, error: "رقم البطاقة (card_number) مفقود" });
+    if (!card_expiry) return res.status(400).json({ success: false, error: "تاريخ الانتهاء (card_expiry) مفقود" });
+    if (!card_cvv) return res.status(400).json({ success: false, error: "رمز CVV (card_cvv) مفقود" });
+    if (!card_name) return res.status(400).json({ success: false, error: "اسم صاحب البطاقة (card_name) مفقود" });
+
+    try {
+        const timeNow = Date.now();
+        
+        // بناء الهيكل الذي تتطلبه الـ Direct API
+        const params = {
+            "merchant_transaction_id": "TXN_" + timeNow,
+            "merchant_order": {
+                "merchant_order_id": "ORD_" + timeNow,
+                "order_amount": amount,
+                "order_currency_code": "USD"
+            },
+            "payment_method": {
+                "card_number": card_number,
+                "card_expiry": card_expiry,
+                "card_cvv": card_cvv,
+                "card_name": card_name
+            },
+            "payer_info": {
+                "payer_name": card_name,
+                "phone_number": "966500000000"
+            }
+        };
+
+        console.log("🚀 جاري الإرسال إلى ليان ليان بالبيانات:", JSON.stringify(params));
+
+        // استدعاء مكتبة ليان ليان
+        LLPay.pay({
+            params: params,
+            successcb: (result) => {
+                console.log("✅ نجاح الدفع المباشر:", result);
+                res.json({ success: true, data: result });
+            },
+            failcb: (error) => {
+                console.error("❌ خطأ من ليان ليان:", error);
+                // إرسال الخطأ الحقيقي الذي تعيده المكتبة
+                res.status(400).json({ success: false, error: error.message || "فشل الاتصال بالبوابة" });
+            }
+        });
+
+    } catch (e) {
+        console.error("🔥 خطأ داخلي في السيرفر:", e);
+        res.status(500).json({ success: false, error: "حدث خطأ داخلي في السيرفر" });
     }
-
-    const params = {
-        "merchant_transaction_id": "TXN_" + Date.now(),
-        "merchant_order": {
-            "merchant_order_id": "ORD_" + Date.now(),
-            "order_amount": amount,
-            "order_currency_code": "USD"
-        },
-        "payment_method": {
-            "card_number": card_number,
-            "card_expiry": card_expiry,
-            "card_cvv": card_cvv,
-            "card_name": card_name
-        },
-        "payer_info": {
-            "payer_name": card_name,
-            "phone_number": "966500000000"
-        }
-    };
-
-    LLPay.pay({
-        params: params,
-        successcb: (result) => res.json({ success: true, data: result }),
-        failcb: (error) => res.status(400).json({ success: false, error: error.message })
-    });
 });
 
 const PORT = process.env.PORT || 3000;
