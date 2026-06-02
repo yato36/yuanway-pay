@@ -19,7 +19,7 @@ app.use(express.json());
 process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط:', err));
 process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج:', reason));
 
-app.get('/', (req, res) => res.send("🚀 السيرفر جاهز تماماً للعملية النهائية!"));
+app.get('/', (req, res) => res.send("🚀 السيرفر يعمل بالنسخة النهائية الموحدة لأرقام الطلبات!"));
 
 const MERCHANT_ID = "202605290003945002";
 
@@ -75,37 +75,35 @@ try {
         merchant_id: MERCHANT_ID,
         is_print_log: true
     });
-    console.log("✅ تم تهيئة مكتبة LianLian بنجاح");
 } catch (initError) {
     console.error("🔥 خطأ في تهيئة المكتبة:", initError);
 }
 
 // 1. طلب توكن الإطار
 app.post('/api/get-iframe-token', (req, res) => {
-    console.log("📥 [مرحلة 1] طلب توكن الإطار...");
     try {
-        const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
         const orderAmount = Number(req.body.amount) || 10.00;
 
         const params = {
-            merchant_transaction_id: "TOK_" + timeNow,
+            merchant_transaction_id: "TOK_" + req.body.order_id, // 🔥 الاعتماد على رقم الطلب الموحد
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
+            payment_method: "inter_credit_card", // 🔥 تمت الإضافة لمنع خطأ front model invalid
             merchant_order: {
-                merchant_order_id: "ORD_" + timeNow,
+                merchant_order_id: req.body.order_id, // 🔥 الاعتماد على رقم الطلب الموحد
                 merchant_order_time: timestamp,
                 order_amount: orderAmount,
                 order_currency_code: req.body.currency || "USD",
                 order_description: "Yuanway Session Init",
                 products: [{ 
                     product_id: "101", 
-                    sku: "SKU_101", // 🔥 تمت إضافة الحقل الإجباري
+                    sku: "SKU_101",
                     name: "Session Token", 
                     price: orderAmount, 
                     quantity: 1, 
                     category: "system",
-                    shipping_provider: "other" // 🔥 تمت إضافة الحقل الإجباري
+                    shipping_provider: "other" 
                 }]
             },
             customer: {
@@ -139,14 +137,12 @@ app.post('/api/get-iframe-token', (req, res) => {
 
 // 2. طلب السحب المالي النهائي
 app.post('/api/process-payment', (req, res) => {
-    console.log("📥 [مرحلة 3] طلب سحب مالي نهائي...");
     try {
-        const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
         const orderAmount = Number(req.body.amount) || 10.00;
 
         const params = {
-            merchant_transaction_id: "TXN_PAY_" + timeNow,
+            merchant_transaction_id: "PAY_" + req.body.order_id,
             merchant_id: MERCHANT_ID,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             redirect_url: "https://yuanway2030.com/payment-methods.html",
@@ -154,18 +150,18 @@ app.post('/api/process-payment', (req, res) => {
             country: "US",
             payment_method: "inter_credit_card", 
             merchant_order: {
-                merchant_order_id: "ORD_PAY_" + timeNow,
+                merchant_order_id: req.body.order_id, // 🔥 يجب أن يكون متطابقاً تماماً مع المرحلة 1
                 merchant_order_time: timestamp,
                 order_amount: orderAmount,
                 order_currency_code: req.body.currency || "USD",
                 products: [{ 
                     product_id: "101", 
-                    sku: "SKU_101", // 🔥 تمت إضافة الـ SKU كما طلبت البوابة
+                    sku: "SKU_101", 
                     name: "Yuanway Order", 
                     price: orderAmount, 
                     quantity: 1, 
                     url: "https://yuanway2030.com",
-                    shipping_provider: "other" // 🔥 تمت إضافة مقدم الشحن كما طلبت البوابة
+                    shipping_provider: "other" 
                 }]
             },
             customer: {
@@ -177,7 +173,7 @@ app.post('/api/process-payment', (req, res) => {
             },
             payment_data: {
                 card: {
-                    card_token: req.body.card_token,
+                    card_token: req.body.card_token, // الآن سيتم قبوله لأنه مرتبط بنفس رقم الطلب
                     holder_name: req.body.holder_name || "Sami Alrashidi" 
                 },
                 installments: 1
@@ -192,7 +188,7 @@ app.post('/api/process-payment', (req, res) => {
                 user_client_browser_screen_height: 1080,
                 user_client_browser_screen_width: 1920,
                 user_client_browser_time_zone_offset: "180",
-                user_client_browser_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                user_client_browser_user_agent: "Mozilla/5.0"
             }
         };
 
