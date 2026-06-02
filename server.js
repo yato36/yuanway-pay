@@ -1,38 +1,30 @@
 const express = require('express');
-const cors = require('cors'); // استخدام المكتبة الرسمية لتجنب تعارضات Railway
+const cors = require('cors'); 
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
 
-// 1. إعداد CORS بشكل آمن ورسمي
-// حارس CORS يدوي فائق القوة لضمان قبول الطلبات
 app.use((req, res, next) => {
-    // التقاط رابط موقعك والسماح له فوراً
     const allowedOrigin = req.headers.origin || '*';
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-    // هذه هي الخطوة الأهم: إعطاء الضوء الأخضر للمتصفح في طلبات الاستكشاف (OPTIONS)
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
-    
     next();
 });
-
 app.use(express.json());
 
-// 2. حماية السيرفر من الانهيار: التقاط أي خطأ مميت لمنع توقف التطبيق
 process.on('uncaughtException', (err) => {
-    console.error('🔥 [CRITICAL] خطأ غير ملتقط أدى لانهيار سابق:', err);
+    console.error('🔥 [CRITICAL] خطأ غير ملتقط:', err);
 });
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('🔥 [CRITICAL] وعد غير معالج أدى لانهيار سابق:', reason);
+    console.error('🔥 [CRITICAL] وعد غير معالج:', reason);
 });
 
-// مسار فحص حالة السيرفر
 app.get('/', (req, res) => {
     res.send("🚀 السيرفر يعمل بنجاح ومحمي من الانهيار!");
 });
@@ -81,7 +73,6 @@ pirxEcIkDEqjSB4oqQiqwHMCyHhxmym58vQziCG2Y+kfvCZVmFh5FteQ2krSt1Av
 dD/rbmHrBx+2WKGsTD2mUIqF8g8cmy6M5/3+wSu54A8+gEZUX4jDoF6nT7Hq1Goe
 jQIDAQAB`;
 
-// 3. تهيئة المكتبة خارج المسارات لضمان عدم حجب المسار إذا حدث خطأ
 let LLPay;
 try {
     LLPay = new LLPaySdk({
@@ -94,10 +85,9 @@ try {
     });
     console.log("✅ تم تهيئة مكتبة LianLian بنجاح");
 } catch (initError) {
-    console.error("🔥 تحذير: خطأ في تهيئة LianLian (ولكن السيرفر سيستمر بالعمل):", initError);
+    console.error("🔥 تحذير: خطأ في تهيئة LianLian:", initError);
 }
 
-// 4. المسار معزول تماماً ومحمي من الداخل
 app.post('/api/get-iframe-token', (req, res) => {
     console.log("📥 طلب جديد وصل إلى مسار الدفع!");
 
@@ -109,6 +99,7 @@ app.post('/api/get-iframe-token', (req, res) => {
         const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
+        // 🚨 هنا تم حقن الاسم ورقم الهاتف في كل الحقول الممكنة لتفادي الخطأ
         const params = {
             merchant_transaction_id: "TXN_" + timeNow,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
@@ -116,21 +107,41 @@ app.post('/api/get-iframe-token', (req, res) => {
             merchant_order: {
                 merchant_order_id: "ORD_" + timeNow,
                 merchant_order_time: timestamp,
-                order_amount: req.body.amount || "10.00",
+                order_amount: req.body.amount || "200.10", 
                 order_currency_code: req.body.currency || "USD",
                 order_description: "Yuan Way Test Order",
-                products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
+                products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "200.10", quantity: 1, category: "test" }]
             },
-            customer: {
-                customer_type: "I",
-                first_name: req.body.customer?.first_name || "Sami",
-                last_name: req.body.customer?.last_name || "Al-Rashidi",
-                email: req.body.customer?.email || "yuanwayco@gmail.com",
-                phone: req.body.customer?.phone || "+201000000000"
+            // الصيغة 1: الكائن القياسي
+            payer: {
+                payer_id: "USER_" + timeNow,
+                payer_name: "Sami Alrashidi",
+                phone_number: "966500000000",
+                phoneNumber: "966500000000",
+                email: "yuanwayco@gmail.com"
+            },
+            // الصيغة 2: كائن الفوترة الدولي
+            billing_address: {
+                first_name: "Sami",
+                last_name: "Alrashidi",
+                phone_number: "966500000000",
+                phoneNumber: "966500000000",
+                phone: "966500000000",
+                email: "yuanwayco@gmail.com",
+                country: "SA"
+            },
+            // الصيغة 3: الدعم القديم
+            payer_info: {
+                payer_type: "USER",
+                payer_id: "USER_" + timeNow,
+                payer_name: "Sami Alrashidi",
+                payer_email: "yuanwayco@gmail.com",
+                payer_phone: "966500000000",
+                phone_number: "966500000000",
+                phoneNumber: "966500000000"
             }
         };
 
-        // 5. استدعاء بوابة الدفع
         LLPay.pay({
             params: params,
             successcb: function (result) {
@@ -146,7 +157,6 @@ app.post('/api/get-iframe-token', (req, res) => {
             },
             failcb: function (error) {
                 console.error("❌ خطأ من البوابة:", error);
-                // إرجاع رسالة خطأ صريحة للواجهة بدلاً من ترك الطلب معلقاً
                 return res.status(400).json({ success: false, error: String(error) });
             }
         });
