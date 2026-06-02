@@ -4,7 +4,7 @@ const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
 
-// حارس CORS يدوي فائق القوة لضمان قبول الطلبات
+// 1. حارس CORS يدوي فائق القوة لضمان قبول الطلبات
 app.use((req, res, next) => {
     // التقاط رابط موقعك والسماح له فوراً
     const allowedOrigin = req.headers.origin || '*';
@@ -13,7 +13,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-    // هذه هي الخطوة الأهم: إعطاء الضوء الأخضر للمتصفح في طلبات الاستكشاف (OPTIONS)
+    // إعطاء الضوء الأخضر للمتصفح في طلبات الاستكشاف (OPTIONS)
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -79,7 +79,7 @@ pirxEcIkDEqjSB4oqQiqwHMCyHhxmym58vQziCG2Y+kfvCZVmFh5FteQ2krSt1Av
 dD/rbmHrBx+2WKGsTD2mUIqF8g8cmy6M5/3+wSu54A8+gEZUX4jDoF6nT7Hq1Goe
 jQIDAQAB`;
 
-// 3. تهيئة المكتبة خارج المسارات لضمان عدم حجب المسار إذا حدث خطأ
+// 3. تهيئة المكتبة
 let LLPay;
 try {
     LLPay = new LLPaySdk({
@@ -95,7 +95,7 @@ try {
     console.error("🔥 تحذير: خطأ في تهيئة LianLian (ولكن السيرفر سيستمر بالعمل):", initError);
 }
 
-// 4. المسار معزول تماماً ومحمي من الداخل
+// 4. مسار جلب التوكن الخاص بالدفع
 app.post('/api/get-iframe-token', (req, res) => {
     console.log("📥 طلب جديد وصل إلى مسار الدفع!");
 
@@ -107,6 +107,7 @@ app.post('/api/get-iframe-token', (req, res) => {
         const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
+        // بناء المعلمات (Params) وتضمين كائن payer_info المطلوب لعملية التوثيق
         const params = {
             merchant_transaction_id: "TXN_" + timeNow,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
@@ -119,12 +120,21 @@ app.post('/api/get-iframe-token', (req, res) => {
                 order_description: "Yuan Way Test Order",
                 products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
             },
+            // [تمت الإضافة] كائن payer_info: هذا هو الكائن الذي تبحث عنه بوابة LianLian لتجنب خطأ front model invalid
+            payer_info: {
+                payer_type: "USER",
+                payer_id: "USER_" + timeNow,
+                payer_name: req.body.customer?.full_name || "سامي ثاري صالح الرشيدي",
+                payer_email: req.body.customer?.email || "yuanwayco@gmail.com",
+                payer_phone: req.body.customer?.phone || "966500000000"
+            },
+            // نبقي على customer لتوافق المكتبة في حال كانت تحتاجها داخلياً
             customer: {
                 customer_type: "I",
-                first_name: req.body.customer?.first_name || "Sami",
-                last_name: req.body.customer?.last_name || "Al-Rashidi",
+                first_name: req.body.customer?.first_name || "سامي",
+                last_name: req.body.customer?.last_name || "الرشيدي",
                 email: req.body.customer?.email || "yuanwayco@gmail.com",
-                phone: req.body.customer?.phone || "+201000000000"
+                phone: req.body.customer?.phone || "966500000000"
             }
         };
 
@@ -144,7 +154,6 @@ app.post('/api/get-iframe-token', (req, res) => {
             },
             failcb: function (error) {
                 console.error("❌ خطأ من البوابة:", error);
-                // إرجاع رسالة خطأ صريحة للواجهة بدلاً من ترك الطلب معلقاً
                 return res.status(400).json({ success: false, error: String(error) });
             }
         });
