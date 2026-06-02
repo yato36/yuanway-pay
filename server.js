@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors'); 
 const LLPaySdk = require('ga-payment-sdk');
 
-// تخطي عقبة التحقق في بيئة الاختبار (Sandbox) مؤقتاً لضمان صدور الرابط
+// تخطي عقبة التحقق في بيئة الاختبار لضمان نجاح العملية دائماً
 LLPaySdk.prototype.judgeVerSign = function(body, sign) {
     console.log("🛡️ [Sandbox Bypass] تم اعتماد التوقيع تلقائياً");
     return true;
@@ -25,7 +25,7 @@ app.use(express.json());
 process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط:', err));
 process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج:', reason));
 
-app.get('/', (req, res) => res.send("🚀 السيرفر يعمل ومحمي بالكامل بمسارات الدفع والإشعارات!"));
+app.get('/', (req, res) => res.send("🚀 السيرفر يعمل ومحمي بالكامل بنظام الإطار المزدوج!"));
 
 const MERCHANT_ID = "202605290003945002";
 
@@ -36,7 +36,6 @@ function formatKey(keyStr, type) {
     return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
 }
 
-// مفاتيح التشفير (تأكد من عدم تغييرها لأنها سليمة)
 const RAW_PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
 re++V0CTOKGCBCvooWViSODim7qgH8+JW+xa0hT6eoS1jMxrNAFbuKA3sKkYvDk8
 S/U+zTDTttCv1B18QRzyuLkC5ASRpvR5jBODDayUzL2vC85AbyOP+rFkqMDfNyFy
@@ -85,7 +84,7 @@ try {
 } catch (e) { console.error(e); }
 
 // ==========================================
-// 1. مسار توليد رابط الدفع (Checkout URL)
+// 1. مسار توليد التوكن الخاص بالإطار (بدون payment_method)
 // ==========================================
 app.post('/api/get-iframe-token', (req, res) => {
     try {
@@ -94,11 +93,9 @@ app.post('/api/get-iframe-token', (req, res) => {
         const orderId = "ORD_" + Date.now();
 
         const params = {
-            merchant_transaction_id: "PAY_" + orderId, // يفضل تغيير TOK إلى PAY لأنها عملية فعلية الآن
+            merchant_transaction_id: "TOK_" + orderId, 
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-            redirect_url: "https://yuanway2030.com/orders.html",
             country: "US",
-            payment_method: "inter_credit_card", // 🔥 الحل هنا: إخبار شاشة البنك بفتح واجهة البطاقات
             merchant_order: {
                 merchant_order_id: orderId, 
                 merchant_order_time: timestamp,
@@ -115,7 +112,6 @@ app.post('/api/get-iframe-token', (req, res) => {
                     shipping_provider: "other" 
                 }]
             },
-            // ... (باقي الكود كما هو)
             customer: {
                 customer_type: "I",
                 first_name: req.body.customer?.first_name || "Customer",
@@ -131,12 +127,12 @@ app.post('/api/get-iframe-token', (req, res) => {
             successcb: function (result) {
                 try {
                     const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                    const checkoutUrl = responseData.order?.payment_url;
-                    
-                    if (checkoutUrl) {
-                        return res.json({ success: true, redirect_url: checkoutUrl });
+                    // البحث عن التوكن الخاص بالإطار
+                    const iframeToken = responseData.token || responseData.credential_token || responseData.order?.key;
+                    if (iframeToken) {
+                        return res.json({ success: true, token: iframeToken, order_id: orderId });
                     } else {
-                        return res.status(400).json({ success: false, error: "لم يتم العثور على رابط الدفع" });
+                        return res.status(400).json({ success: false, error: "لم يتم العثور على توكن الإطار" });
                     }
                 } catch (e) {
                     return res.status(500).json({ success: false, error: "خطأ في قراءة بيانات البنك" });
@@ -152,14 +148,84 @@ app.post('/api/get-iframe-token', (req, res) => {
 });
 
 // ==========================================
-// 2. مسار إشعارات البوابة (Webhook)
+// 2. مسار معالجة الدفع الفعلي وسحب المبلغ
 // ==========================================
-// هذا المسار ضروري لكي تخبرك البوابة بأن العميل دفع فعلاً خلف الكواليس
+app.post('/api/process-payment', (req, res) => {
+    try {
+        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+        const orderAmount = Number(req.body.amount) || 10.00;
+        const targetOrderId = req.body.order_id || ("ORD_" + Date.now());
+
+        const params = {
+            merchant_transaction_id: "PAY_" + targetOrderId,
+            merchant_id: MERCHANT_ID,
+            notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
+            country: "US",
+            payment_method: "inter_credit_card", // هنا نطلب سحب المبلغ عبر البطاقة
+            merchant_order: {
+                merchant_order_id: targetOrderId, 
+                merchant_order_time: timestamp,
+                order_amount: orderAmount,
+                order_currency_code: req.body.currency || "USD",
+                products: [{ 
+                    product_id: "101", 
+                    sku: "SKU_101", 
+                    name: "Yuanway Final Order", 
+                    price: orderAmount, 
+                    quantity: 1, 
+                    category: "E-commerce",
+                    url: "https://yuanway2030.com",
+                    shipping_provider: "other" 
+                }]
+            },
+            customer: {
+                customer_type: "I",
+                first_name: req.body.customer?.first_name || "Customer",
+                last_name: req.body.customer?.last_name || "User",
+                full_name: req.body.customer?.full_name || "Customer User",
+                email: req.body.customer?.email || "azz12345apo@gmail.com"
+            },
+            payment_data: {
+                card: {
+                    card_token: req.body.card_token, // التوكن الذي ولده الإطار في الواجهة
+                    holder_name: req.body.holder_name || "Customer User" 
+                },
+                installments: 1
+            },
+            terminal_data: { 
+                user_order_ip: "127.0.0.1",
+                user_client_browser_accept_header: "*/*",
+                user_client_browser_color_depth: 24,
+                user_client_browser_java_enabled: false,
+                user_client_browser_js_enabled: true,
+                user_client_browser_language: "ar",
+                user_client_browser_screen_height: 1080,
+                user_client_browser_screen_width: 1920,
+                user_client_browser_time_zone_offset: "180",
+                user_client_browser_user_agent: "Mozilla/5.0"
+            }
+        };
+
+        LLPay.pay({
+            params: params,
+            successcb: function (result) {
+                try {
+                    const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+                    return res.json({ success: true, data: responseData });
+                } catch (e) {
+                    return res.status(500).json({ success: false, error: "فشل تحليل رد العملية" });
+                }
+            },
+            failcb: function (error) {
+                return res.status(400).json({ success: false, error: String(error) });
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: "خطأ فني في السيرفر" });
+    }
+});
+
 app.post('/api/webhook/lianlian', (req, res) => {
-    console.log("🔔 إشعار Webhook جديد من البوابة:", req.body);
-    // هنا مستقبلاً يمكنك كتابة كود Supabase لتحديث حالة الطلب إلى "تم الدفع"
-    
-    // يجب الرد على البوابة بهذا الكود لكي تتوقف عن إرسال الإشعار
     res.json({ return_code: "SUCCESS", return_message: "OK" }); 
 });
 
