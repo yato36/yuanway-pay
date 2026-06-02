@@ -57,7 +57,6 @@ o0Di/MhZq4i/HDYRrtr2Ruj2UJx/Vxuy3XbtlR4X6wMFTcY8x2BjhRwoJJshKnP0
 P2zlSbjsI67A0i/23LDFvNWY4wk5jkVmyCjAvunyEUDY4mFv6aYXEkMrOiBa9m2v
 o1/KuCEgl6yMZxZ59UD0/Z7G`;
 
-// ✅ تم تعديل المفتاح العام هنا بنجاح ليتوافق مع بوابة LianLian
 const RAW_PUBLIC_KEY = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7
 ihx5ENFsq9Ta+O6YjkzfGEmjoIJCAPhJ9DPFipHZU5Xb1C2SUL81kady+xMbE2/s
 bWPN9roMhfcOWJ2ripNE1zhk9+8HbhxVOTcnbr7qZLNfcBv0ppim+R5p9kTCMzww
@@ -80,7 +79,7 @@ try {
     console.error("🔥 خطأ في تهيئة المكتبة:", initError);
 }
 
-// 1. مسار جلب توكن تهيئة الإطار (مع تحديد طريقة الدفع لتجهيز قواعد الأمان)
+// 1. مسار جلب التوكن (تم حذف حقل طريقة الدفع هنا ليعود كطلب توكن نقي وناجح)
 app.post('/api/get-iframe-token', (req, res) => {
     try {
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
@@ -91,7 +90,7 @@ app.post('/api/get-iframe-token', (req, res) => {
             merchant_transaction_id: "TOK_" + serverGeneratedOrderId, 
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            payment_method: "inter_credit_card", 
+            // 🛑 تم إزالة سطر الدفع من هنا لعدم التسبب بخطأ 400 وعمل توكن سليم
             merchant_order: {
                 merchant_order_id: serverGeneratedOrderId, 
                 merchant_order_time: timestamp,
@@ -113,8 +112,8 @@ app.post('/api/get-iframe-token', (req, res) => {
                 first_name: req.body.customer?.first_name || "Customer",
                 last_name: req.body.customer?.last_name || "User",
                 full_name: req.body.customer?.full_name || "Customer User",
-                email: req.body.customer?.email || "yuanwayco@gmail.com",
-                phone: req.body.customer?.phone || "+966500000000"
+                email: req.body.customer?.email || "azz12345apo@gmail.com",
+                phone: req.body.customer?.phone || "0559392787"
             }
         };
 
@@ -138,7 +137,7 @@ app.post('/api/get-iframe-token', (req, res) => {
     }
 });
 
-// 2. مسار السحب المالي الفعلي (تم إعادته وتعديله ليعمل بانسجام مع التوكن المستلم)
+// 2. مسار السحب المالي الفعلي (باستخدام التوكن المرسل من الواجهة الأمامية)
 app.post('/api/process-payment', (req, res) => {
     try {
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
@@ -169,15 +168,15 @@ app.post('/api/process-payment', (req, res) => {
             },
             customer: {
                 customer_type: "I",
-                first_name: req.body.customer?.first_name || "Sami",
-                last_name: req.body.customer?.last_name || "Al-Rashidi",
-                full_name: req.body.customer?.full_name || "Sami Al-Rashidi",
-                email: req.body.customer?.email || "yuanwayco@gmail.com"
+                first_name: req.body.customer?.first_name || "Customer",
+                last_name: req.body.customer?.last_name || "User",
+                full_name: req.body.customer?.full_name || "Customer User",
+                email: req.body.customer?.email || "azz12345apo@gmail.com"
             },
             payment_data: {
                 card: {
                     card_token: req.body.card_token, 
-                    holder_name: req.body.holder_name || "Sami Al-Rashidi" 
+                    holder_name: req.body.holder_name || "Customer User" 
                 },
                 installments: 1
             },
