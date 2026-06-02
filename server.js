@@ -94,11 +94,11 @@ app.post('/api/get-iframe-token', (req, res) => {
         const orderId = "ORD_" + Date.now();
 
         const params = {
-            merchant_transaction_id: "TOK_" + orderId, 
+            merchant_transaction_id: "PAY_" + orderId, // يفضل تغيير TOK إلى PAY لأنها عملية فعلية الآن
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-            // 🔥 إضافة هامة: رابط العودة بعد الدفع
-            redirect_url: "https://yuanway2030.com/orders.html", 
+            redirect_url: "https://yuanway2030.com/orders.html",
             country: "US",
+            payment_method: "inter_credit_card", // 🔥 الحل هنا: إخبار شاشة البنك بفتح واجهة البطاقات
             merchant_order: {
                 merchant_order_id: orderId, 
                 merchant_order_time: timestamp,
@@ -115,6 +115,7 @@ app.post('/api/get-iframe-token', (req, res) => {
                     shipping_provider: "other" 
                 }]
             },
+            // ... (باقي الكود كما هو)
             customer: {
                 customer_type: "I",
                 first_name: req.body.customer?.first_name || "Customer",
