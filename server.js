@@ -1,42 +1,33 @@
-const express = require('express');
-const cors = require('cors'); 
+const express  = require('express');
 const LLPaySdk = require('ga-payment-sdk');
-
-// 🛡️ تخطي عقبة التحقق في بيئة الاختبار لضمان نجاح العملية
-LLPaySdk.prototype.judgeVerSign = function(body, sign) {
-    console.log("🛡️ [Sandbox Bypass] تم اعتماد التوقيع تلقائياً");
-    return true;
-};
 
 const app = express();
 
+// ── CORS ──
 app.use((req, res, next) => {
-    const allowedOrigin = req.headers.origin || '*';
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.setHeader('Access-Control-Allow-Origin',      req.headers.origin || '*');
+    res.setHeader('Access-Control-Allow-Methods',     'GET, POST, OPTIONS, PUT, DELETE');
+    res.setHeader('Access-Control-Allow-Headers',     'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     if (req.method === 'OPTIONS') return res.status(200).end();
     next();
 });
-
 app.use(express.json());
 
-process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط:', err));
-process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج:', reason));
+process.on('uncaughtException',  err    => console.error('🔥 uncaughtException:',  err));
+process.on('unhandledRejection', reason => console.error('🔥 unhandledRejection:', reason));
 
-app.get('/', (req, res) => res.send("🚀 السيرفر يعمل ومحمي بالكامل!"));
+app.get('/', (req, res) => res.send('🚀 Yuanway Payment Server is running'));
 
-const MERCHANT_ID = "202605290003945002";
+// ══════════════════════════════════════════
+// إعداد SDK
+// ══════════════════════════════════════════
+const MERCHANT_ID = '202605290003945002';
 
-function formatKey(keyStr, type) {
-    const clean = keyStr.replace(/-----.*?-----/g, '').replace(/[\r\n\s]+/g, '');
-    if (!clean || clean.length < 100) return "INVALID_KEY";
-    const lines = clean.match(/.{1,64}/g).join('\n');
-    const formatted = `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
-    
-    // 🔥 هنا التعديل: تحويل المفتاح إلى Buffer كما تطلب المكتبة تماماً
-    return Buffer.from(formatted, 'utf-8');
+function formatKey(raw, type) {
+    const clean = raw.replace(/-----.*?-----/g, '').replace(/[\r\n\s]+/g, '');
+    if (!clean || clean.length < 100) return 'INVALID_KEY';
+    return `-----BEGIN ${type}-----\n${clean.match(/.{1,64}/g).join('\n')}\n-----END ${type}-----`;
 }
 
 const RAW_PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
@@ -66,168 +57,225 @@ o0Di/MhZq4i/HDYRrtr2Ruj2UJx/Vxuy3XbtlR4X6wMFTcY8x2BjhRwoJJshKnP0
 P2zlSbjsI67A0i/23LDFvNWY4wk5jkVmyCjAvunyEUDY4mFv6aYXEkMrOiBa9m2v
 o1/KuCEgl6yMZxZ59UD0/Z7G`;
 
-const RAW_PUBLIC_KEY = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7
-ihx5ENFsq9Ta+O6YjkzfGEmjoIJCAPhJ9DPFipHZU5Xb1C2SUL81kady+xMbE2/s
-bWPN9roMhfcOWJ2ripNE1zhk9+8HbhxVOTcnbr7qZLNfcBv0ppim+R5p9kTCMzww
-M9XR2YNvGo99MaBiFJA19jwGfof/pJGXQlo4ZHmBkGiMnTh1cHvQAC7+/au7cMDj
-93teHhlc2sl2eWnmJoSWGHZo7ja4LL6ybziWve+1miAW/2QDUSm6secOgW55wpr9
-B7W56dftvryYPRU+qjlwMPXfVWGOnikef83XRSDAbES2nUheasIHHy4wlWzp1Y8+
-DQIDAQAB`;
+// ⚠️ استخدم المفتاح العام الذي يعطيك إياه LianLian (مفتاح التحقق من التوقيع)
+const RAW_PUBLIC_KEY = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuZkudN9uPhG9iK3vvldA
+kzihggQr6KFlYkjg4pu6oB/PiVvsWtIU+nqEtYzMazQBW7igN7CpGLw5PEv1Ps0w
+07bQr9QdfEEc8ri5AuQEkab0eYwTgw2slMy9rwvOQG8jj/qxZKjA3zchcowe34i8
+pirxEcIkDEqjSB4oqQiqwHMCyHhxmym58vQziCG2Y+kfvCZVmFh5FteQ2krSt1Av
+26NnUnZ75SEPFGcpvKvovk7Mri1nIyv0GB/mzUt44FsGDOSUZkrM3mtV+sTpEWrW
+dD/rbmHrBx+2WKGsTD2mUIqF8g8cmy6M5/3+wSu54A8+gEZUX4jDoF6nT7Hq1Goe
+jQIDAQAB`;
 
 let LLPay;
 try {
     LLPay = new LLPaySdk({
-        env: 'sandbox',
-        sign_type: 'RSA',
+        env:               'sandbox',
+        sign_type:         'RSA',
         merchant_sign_key: formatKey(RAW_PRIVATE_KEY, 'PRIVATE KEY'),
-        ll_sign_key: formatKey(RAW_PUBLIC_KEY, 'PUBLIC KEY'),
-        merchant_id: MERCHANT_ID,
-        is_print_log: true
+        ll_sign_key:       formatKey(RAW_PUBLIC_KEY,  'PUBLIC KEY'),
+        merchant_id:       MERCHANT_ID,
+        is_print_log:      true
     });
-} catch (e) { console.error(e); }
+    console.log('✅ LianLian SDK جاهز');
+} catch(e) {
+    console.error('🔥 فشل تهيئة SDK:', e);
+}
 
-// ==========================================
-// 1. مسار جلب توكن الإطار
-// ==========================================
+// ── helper: timestamp بصيغة YYYYMMDDHHmmss ──
+function makeTs() {
+    const n = new Date(), p = x => String(x).padStart(2,'0');
+    return `${n.getFullYear()}${p(n.getMonth()+1)}${p(n.getDate())}${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`;
+}
+
+// ══════════════════════════════════════════
+// المسار 1: جلب credential_token للـ iframe
+// يستخدم getTokenIframe() — بدون إنشاء order
+// ══════════════════════════════════════════
 app.post('/api/get-iframe-token', (req, res) => {
-    try {
-        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-        const orderAmount = Number(req.body.amount) || 10.00;
-        const orderId = "ORD_" + Date.now();
+    console.log('📥 /api/get-iframe-token');
+    if (!LLPay) return res.status(500).json({ success: false, error: 'SDK غير مهيأ' });
 
-        const params = {
-            merchant_transaction_id: "TOK_" + orderId, 
-            notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-            country: "US",
-            merchant_order: {
-                merchant_order_id: orderId, 
-                merchant_order_time: timestamp,
-                order_amount: orderAmount,
-                order_currency_code: req.body.currency || "USD",
-                products: [{ 
-                    product_id: "101", 
-                    sku: "SKU_101",
-                    name: "Yuanway Order", 
-                    price: orderAmount, 
-                    quantity: 1, 
-                    category: "system",
-                    url: "https://yuanway2030.com",
-                    shipping_provider: "other" 
-                }]
-            },
-            customer: {
-                customer_type: "I",
-                // 🛑 إجبار البوابة على قراءة اسم إنجليزي لتجنب الانهيار الداخلي للغة
-                first_name: "Yuanway",
-                last_name: "Customer",
-                full_name: "Yuanway Customer",
-                email: req.body.customer?.email || "azz12345apo@gmail.com",
-                phone: "0559392787"
+    LLPay.getTokenIframe({
+        params: {},
+        successcb(result) {
+            try {
+                const data  = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+                const token = data?.credential_token || data?.token || data?.key;
+                console.log('✅ getTokenIframe token:', token);
+                if (!token) return res.status(400).json({ success: false, error: 'لم يُرجع السيرفر token' });
+                return res.json({ success: true, token });
+            } catch(e) {
+                console.error('❌ parse error:', e);
+                return res.status(500).json({ success: false, error: 'فشل تحليل الرد' });
             }
-        };
-
-        LLPay.pay({
-            params: params,
-            successcb: function (result) {
-                try {
-                    const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                    const iframeToken = responseData.token || responseData.credential_token || responseData.order?.key;
-                    if (iframeToken) return res.json({ success: true, token: iframeToken, order_id: orderId });
-                    return res.status(400).json({ success: false, error: "لم يتم العثور على توكن" });
-                } catch (e) {
-                    return res.status(500).json({ success: false, error: "خطأ استخراج التوكن" });
-                }
-            },
-            failcb: function (error) {
-                return res.status(400).json({ success: false, error: String(error) });
-            }
-        });
-    } catch (err) {
-        return res.status(500).json({ success: false, error: "خطأ داخلي" });
-    }
+        },
+        failcb(err) {
+            console.error('❌ getTokenIframe فشل:', err);
+            // ── fallback: إذا فشل getTokenIframe نجرب pay() ──
+            _fallbackPayToken(req, res);
+        }
+    });
 });
 
-// ==========================================
-// 2. مسار معالجة وسحب الدفع الفعلي
-// ==========================================
+// ── fallback: استخدام pay() لجلب order.key كـ token ──
+function _fallbackPayToken(req, res) {
+    console.log('⚠️ Fallback: استخدام pay() للحصول على token');
+    const ts  = makeTs();
+    const tid = ts + String(Date.now()).slice(-4);
+
+    const params = {
+        merchant_transaction_id: tid,
+        notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
+        redirect_url:     'https://yuanway2030.com/payment-methods.html',
+        cancel_url:       'https://yuanway2030.com/payment-methods.html',
+        country:          'US',
+        payment_method:   null,
+        front_model:      null,
+        merchant_order: {
+            merchant_order_id:   tid.slice(0,10),
+            merchant_order_time: ts,
+            order_amount:        Number(req.body.amount) || 200.10,
+            order_currency_code: req.body.currency || 'USD',
+            order_description:   'Yuan Way Order',
+            products: [{
+                product_id: '101',
+                name:       'Yuanway Product',
+                price:      Number(req.body.amount) || 200.10,
+                quantity:   1,
+                url:        'https://yuanway2030.com',
+                shipping_provider: 'other'
+            }]
+        },
+        customer: {
+            customer_type: 'I',
+            first_name:    'Yuanway',
+            last_name:     'Customer',
+            full_name:     'Yuanway Customer',
+            email:         req.body.email || 'yuanwayco@gmail.com'
+        }
+    };
+
+    LLPay.pay({
+        params,
+        successcb(result) {
+            try {
+                const data  = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+                const token = data?.order?.key || data?.credential_token || data?.token;
+                console.log('✅ fallback pay() token:', token);
+                if (!token) return res.status(400).json({ success: false, error: 'لم يُرجع order.key' });
+                return res.json({ success: true, token });
+            } catch(e) {
+                return res.status(500).json({ success: false, error: 'فشل تحليل رد pay()' });
+            }
+        },
+        failcb(err) {
+            console.error('❌ fallback pay() فشل:', err);
+            return res.status(400).json({ success: false, error: String(err) });
+        }
+    });
+}
+
+// ══════════════════════════════════════════
+// المسار 2: تنفيذ الدفع الفعلي بعد confirmPay
+// يستقبل card_token من الـ frontend ويرسله لـ LianLian
+// ══════════════════════════════════════════
 app.post('/api/process-payment', (req, res) => {
-    try {
-        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-        const orderAmount = Number(req.body.amount) || 10.00;
-        const targetOrderId = req.body.order_id || ("ORD_" + Date.now());
+    console.log('📥 /api/process-payment - card_token:', req.body.card_token?.slice(0,20) + '...');
+    if (!LLPay) return res.status(500).json({ success: false, error: 'SDK غير مهيأ' });
 
-        const params = {
-            merchant_transaction_id: "PAY_" + targetOrderId,
-            merchant_id: MERCHANT_ID,
-            notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-            country: "US",
-            payment_method: "inter_credit_card", 
-            merchant_order: {
-                merchant_order_id: targetOrderId, 
-                merchant_order_time: timestamp,
-                order_amount: orderAmount,
-                order_currency_code: req.body.currency || "USD",
-                products: [{ 
-                    product_id: "101", 
-                    sku: "SKU_101", 
-                    name: "Yuanway Final Order", 
-                    price: orderAmount, 
-                    quantity: 1, 
-                    category: "E-commerce",
-                    url: "https://yuanway2030.com",
-                    shipping_provider: "other" 
-                }]
-            },
-            customer: {
-                customer_type: "I",
-                first_name: "Yuanway",
-                last_name: "Customer",
-                full_name: "Yuanway Customer",
-                email: req.body.customer?.email || "azz12345apo@gmail.com"
-            },
-            payment_data: {
-                card: {
-                    card_token: req.body.card_token, 
-                    holder_name: "Yuanway Customer" 
-                },
-                installments: 1
-            },
-            terminal_data: { 
-                user_order_ip: "127.0.0.1",
-                user_client_browser_accept_header: "*/*",
-                user_client_browser_color_depth: 24,
-                user_client_browser_java_enabled: false,
-                user_client_browser_js_enabled: true,
-                user_client_browser_language: "en-US",
-                user_client_browser_screen_height: 1080,
-                user_client_browser_screen_width: 1920,
-                user_client_browser_time_zone_offset: "180",
-                user_client_browser_user_agent: "Mozilla/5.0"
-            }
-        };
+    const { card_token, holder_name, amount, currency, email } = req.body;
 
-        LLPay.pay({
-            params: params,
-            successcb: function (result) {
-                try {
-                    const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                    return res.json({ success: true, data: responseData });
-                } catch (e) {
-                    return res.status(500).json({ success: false, error: "فشل تحليل رد العملية" });
-                }
-            },
-            failcb: function (error) {
-                return res.status(400).json({ success: false, error: String(error) });
-            }
-        });
-    } catch (err) {
-        return res.status(500).json({ success: false, error: "خطأ فني في السيرفر" });
+    if (!card_token) {
+        return res.status(400).json({ success: false, error: 'card_token مطلوب' });
     }
+
+    const ts  = makeTs();
+    const tid = 'PAY' + ts + String(Date.now()).slice(-4);
+    const oid = 'ORD' + ts.slice(0,10);
+    const amt = Number(amount) || 200.10;
+
+    // IP المستخدم
+    const userIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+                || req.headers['x-real-ip']
+                || req.socket?.remoteAddress
+                || '127.0.0.1';
+
+    // ✅ البنية الدقيقة حسب توثيق LianLian الرسمي
+    const params = {
+        merchant_transaction_id: tid,
+        notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
+        redirect_url:     'https://yuanway2030.com/payment-methods.html',
+        cancel_url:       'https://yuanway2030.com/payment-methods.html',
+        country:          'US',
+        payment_method:   'inter_credit_card',
+        merchant_order: {
+            merchant_order_id:   oid,
+            merchant_order_time: ts,
+            order_amount:        amt,
+            order_currency_code: currency || 'USD',
+            order_description:   'Yuan Way Order',
+            products: [{
+                product_id: '101',
+                name:       'Yuanway Product',
+                price:      amt,
+                quantity:   1,
+                url:        'https://yuanway2030.com',
+                shipping_provider: 'other'
+            }]
+        },
+        customer: {
+            customer_type: 'I',
+            first_name:    'Yuanway',
+            last_name:     'Customer',
+            full_name:     holder_name || 'Yuanway Customer',
+            email:         email       || 'yuanwayco@gmail.com'
+        },
+        payment_data: {
+            card: {
+                card_token:  card_token,
+                holder_name: holder_name || 'Yuanway Customer'
+            },
+            installments: 1
+        },
+        terminal_data: {
+            user_order_ip:                          userIp,
+            user_client_browser_accept_header:      '*/*',
+            user_client_browser_color_depth:        24,
+            user_client_browser_java_enabled:       false,
+            user_client_browser_js_enabled:         true,
+            user_client_browser_language:           'en-US',
+            user_client_browser_screen_height:      1080,
+            user_client_browser_screen_width:       1920,
+            user_client_browser_time_zone_offset:   '180',
+            user_client_browser_user_agent:         'Mozilla/5.0 (compatible; Yuanway/1.0)'
+        }
+    };
+
+    LLPay.pay({
+        params,
+        successcb(result) {
+            try {
+                const data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+                console.log('✅ process-payment نجح:', JSON.stringify(data).slice(0, 200));
+                return res.json({ success: true, data });
+            } catch(e) {
+                return res.status(500).json({ success: false, error: 'فشل تحليل رد الدفع' });
+            }
+        },
+        failcb(err) {
+            console.error('❌ process-payment فشل:', err);
+            return res.status(400).json({ success: false, error: String(err) });
+        }
+    });
 });
 
+// ══════════════════════════════════════════
+// Webhook
+// ══════════════════════════════════════════
 app.post('/api/webhook/lianlian', (req, res) => {
-    res.json({ return_code: "SUCCESS", return_message: "OK" }); 
+    console.log('📨 Webhook:', JSON.stringify(req.body).slice(0, 300));
+    res.status(200).json({ return_code: 'SUCCESS', return_message: 'OK' });
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 السيرفر جاهز ومستقر تماماً على المنفذ ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 السيرفر جاهز على المنفذ ${PORT}`));
