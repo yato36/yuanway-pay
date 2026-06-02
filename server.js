@@ -145,15 +145,18 @@ app.post('/api/get-iframe-token', (req, res) => {
 });
 
 // 2. طلب السحب المالي النهائي
+// مسار الدفع النهائي المحدث بالكامل
 app.post('/api/process-payment', (req, res) => {
-    console.log("📥 [مرحلة 3] طلب سحب مالي نهائي...");
+    console.log("📥 [مرحلة 3] طلب سحب مالي نهائي بالهيكلة المطابقة تماماً لرد الشركة...");
     try {
+        const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-        const orderAmount = Number(req.body.amount) || 10.00;
-        const targetOrderId = req.body.order_id || ("ORD_BACK_" + Date.now());
+        
+        // استخدام معرف طلب فريد وموحد
+        const orderId = "ORD_PAY_" + timeNow;
 
         const params = {
-            merchant_transaction_id: "PAY_" + targetOrderId,
+            merchant_transaction_id: "TXN_" + timeNow,
             merchant_id: MERCHANT_ID,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             redirect_url: "https://yuanway2030.com/payment-methods.html",
@@ -161,15 +164,16 @@ app.post('/api/process-payment', (req, res) => {
             country: "US",
             payment_method: "inter_credit_card", 
             merchant_order: {
-                merchant_order_id: targetOrderId, 
+                merchant_order_id: orderId, // 🔥 المعرف المطلوب من البوابة
                 merchant_order_time: timestamp,
-                order_amount: orderAmount,
+                order_amount: req.body.amount || "10.00",
                 order_currency_code: req.body.currency || "USD",
+                order_description: "Yuan Way Final Order",
                 products: [{ 
                     product_id: "101", 
                     sku: "SKU_101", 
                     name: "Yuanway Order", 
-                    price: orderAmount, 
+                    price: req.body.amount || "10.00", 
                     quantity: 1, 
                     url: "https://yuanway2030.com",
                     shipping_provider: "other" 
@@ -184,42 +188,29 @@ app.post('/api/process-payment', (req, res) => {
             },
             payment_data: {
                 card: {
-                    card_token: req.body.card_token, 
+                    card_token: req.body.card_token,
                     holder_name: req.body.holder_name || "Sami Alrashidi" 
                 },
                 installments: 1
             },
             terminal_data: { 
                 user_order_ip: "127.0.0.1",
-                user_client_browser_accept_header: "*/*",
-                user_client_browser_color_depth: 24,
-                user_client_browser_java_enabled: false,
                 user_client_browser_js_enabled: true,
                 user_client_browser_language: "ar",
-                user_client_browser_screen_height: 1080,
-                user_client_browser_screen_width: 1920,
-                user_client_browser_time_zone_offset: "180",
                 user_client_browser_user_agent: "Mozilla/5.0"
             }
         };
 
         LLPay.pay({
             params: params,
-            successcb: function (result) {
-                try {
-                    const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                    return res.json({ success: true, data: responseData });
-                } catch (e) {
-                    return res.status(500).json({ success: false, error: "فشل تحليل رد العملية" });
-                }
-            },
-            failcb: function (error) {
-                console.error("❌ رفض من البوابة في الخطوة الأخيرة:", error);
-                return res.status(400).json({ success: false, error: String(error) });
+            successcb: (result) => res.json({ success: true, data: result.body }),
+            failcb: (error) => {
+                console.error("❌ رفض من البوابة:", error);
+                res.status(400).json({ success: false, error: String(error) });
             }
         });
     } catch (err) {
-        return res.status(500).json({ success: false, error: "خطأ فني في السيرفر" });
+        res.status(500).json({ success: false, error: "خطأ داخلي" });
     }
 });
 
