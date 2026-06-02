@@ -3,7 +3,6 @@ const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
 
-// ── CORS ──
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin',      req.headers.origin || '*');
     res.setHeader('Access-Control-Allow-Methods',     'GET, POST, OPTIONS, PUT, DELETE');
@@ -14,14 +13,12 @@ app.use((req, res, next) => {
 });
 app.use(express.json());
 
-process.on('uncaughtException',  err    => console.error('🔥 uncaughtException:',  err));
-process.on('unhandledRejection', reason => console.error('🔥 unhandledRejection:', reason));
+process.on('uncaughtException',  err    => console.error('🔥', err));
+process.on('unhandledRejection', reason => console.error('🔥', reason));
 
-app.get('/', (req, res) => res.send('🚀 Yuanway Payment Server is running'));
+app.get('/', (req, res) => res.send('🚀 Server running'));
 
-// ══════════════════════════════════════════
-// إعداد SDK
-// ══════════════════════════════════════════
+// ─── مفاتيح RSA ───────────────────────────────────────────
 const MERCHANT_ID = '202605290003945002';
 
 function formatKey(raw, type) {
@@ -30,7 +27,7 @@ function formatKey(raw, type) {
     return `-----BEGIN ${type}-----\n${clean.match(/.{1,64}/g).join('\n')}\n-----END ${type}-----`;
 }
 
-const RAW_PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
+const PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
 re++V0CTOKGCBCvooWViSODim7qgH8+JW+xa0hT6eoS1jMxrNAFbuKA3sKkYvDk8
 S/U+zTDTttCv1B18QRzyuLkC5ASRpvR5jBODDayUzL2vC85AbyOP+rFkqMDfNyFy
 jB7fiLymKvERwiQMSqNIHiipCKrAcwLIeHGbKbny9DOIIbZj6R+8JlWYWHkW15Da
@@ -57,8 +54,7 @@ o0Di/MhZq4i/HDYRrtr2Ruj2UJx/Vxuy3XbtlR4X6wMFTcY8x2BjhRwoJJshKnP0
 P2zlSbjsI67A0i/23LDFvNWY4wk5jkVmyCjAvunyEUDY4mFv6aYXEkMrOiBa9m2v
 o1/KuCEgl6yMZxZ59UD0/Z7G`;
 
-// ⚠️ استخدم المفتاح العام الذي يعطيك إياه LianLian (مفتاح التحقق من التوقيع)
-const RAW_PUBLIC_KEY = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuZkudN9uPhG9iK3vvldA
+const PUBLIC_KEY = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuZkudN9uPhG9iK3vvldA
 kzihggQr6KFlYkjg4pu6oB/PiVvsWtIU+nqEtYzMazQBW7igN7CpGLw5PEv1Ps0w
 07bQr9QdfEEc8ri5AuQEkab0eYwTgw2slMy9rwvOQG8jj/qxZKjA3zchcowe34i8
 pirxEcIkDEqjSB4oqQiqwHMCyHhxmym58vQziCG2Y+kfvCZVmFh5FteQ2krSt1Av
@@ -71,87 +67,58 @@ try {
     LLPay = new LLPaySdk({
         env:               'sandbox',
         sign_type:         'RSA',
-        merchant_sign_key: formatKey(RAW_PRIVATE_KEY, 'PRIVATE KEY'),
-        ll_sign_key:       formatKey(RAW_PUBLIC_KEY,  'PUBLIC KEY'),
+        merchant_sign_key: formatKey(PRIVATE_KEY, 'PRIVATE KEY'),
+        ll_sign_key:       formatKey(PUBLIC_KEY,  'PUBLIC KEY'),
         merchant_id:       MERCHANT_ID,
         is_print_log:      true
     });
-    console.log('✅ LianLian SDK جاهز');
-} catch(e) {
-    console.error('🔥 فشل تهيئة SDK:', e);
-}
+    console.log('✅ SDK ready');
+} catch(e) { console.error('🔥 SDK init failed:', e); }
 
-// ── helper: timestamp بصيغة YYYYMMDDHHmmss ──
+// ─── helper ────────────────────────────────────────────────
 function makeTs() {
     const n = new Date(), p = x => String(x).padStart(2,'0');
     return `${n.getFullYear()}${p(n.getMonth()+1)}${p(n.getDate())}${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`;
 }
 
-// ══════════════════════════════════════════
-// المسار 1: جلب credential_token للـ iframe
-// يستخدم getTokenIframe() — بدون إنشاء order
-// ══════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+// المسار 1: جلب token للـ iframe
+// نستخدم نفس params التي أثبتت نجاحها (order.key)
+// ─────────────────────────────────────────────────────────────
 app.post('/api/get-iframe-token', (req, res) => {
-    console.log('📥 /api/get-iframe-token');
-    if (!LLPay) return res.status(500).json({ success: false, error: 'SDK غير مهيأ' });
+    console.log('📥 get-iframe-token | amount:', req.body.amount);
+    if (!LLPay) return res.status(500).json({ success: false, error: 'SDK error' });
 
-    LLPay.getTokenIframe({
-        params: {},
-        successcb(result) {
-            try {
-                const data  = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                const token = data?.credential_token || data?.token || data?.key;
-                console.log('✅ getTokenIframe token:', token);
-                if (!token) return res.status(400).json({ success: false, error: 'لم يُرجع السيرفر token' });
-                return res.json({ success: true, token });
-            } catch(e) {
-                console.error('❌ parse error:', e);
-                return res.status(500).json({ success: false, error: 'فشل تحليل الرد' });
-            }
-        },
-        failcb(err) {
-            console.error('❌ getTokenIframe فشل:', err);
-            // ── fallback: إذا فشل getTokenIframe نجرب pay() ──
-            _fallbackPayToken(req, res);
-        }
-    });
-});
+    const timeNow  = Date.now();
+    const ts       = makeTs();
+    const amount   = req.body.amount   || '200.10';   // string كما كان في النسخة الناجحة
+    const currency = req.body.currency || 'USD';
+    const email    = req.body.email    || 'yuanwayco@gmail.com';
 
-// ── fallback: استخدام pay() لجلب order.key كـ token ──
-function _fallbackPayToken(req, res) {
-    console.log('⚠️ Fallback: استخدام pay() للحصول على token');
-    const ts  = makeTs();
-    const tid = ts + String(Date.now()).slice(-4);
-
+    // ✅ هذه بالضبط params النسخة التي أرجعت order.key ناجحاً
     const params = {
-        merchant_transaction_id: tid,
+        merchant_transaction_id: 'TXN_' + timeNow,
         notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
-        redirect_url:     'https://yuanway2030.com/payment-methods.html',
-        cancel_url:       'https://yuanway2030.com/payment-methods.html',
-        country:          'US',
-        payment_method:   null,
-        front_model:      null,
+        country: 'US',
         merchant_order: {
-            merchant_order_id:   tid.slice(0,10),
+            merchant_order_id:   'ORD_' + timeNow,
             merchant_order_time: ts,
-            order_amount:        Number(req.body.amount) || 200.10,
-            order_currency_code: req.body.currency || 'USD',
+            order_amount:        amount,
+            order_currency_code: currency,
             order_description:   'Yuan Way Order',
             products: [{
                 product_id: '101',
                 name:       'Yuanway Product',
-                price:      Number(req.body.amount) || 200.10,
+                price:      amount,
                 quantity:   1,
-                url:        'https://yuanway2030.com',
-                shipping_provider: 'other'
+                category:   'general'
             }]
         },
-        customer: {
-            customer_type: 'I',
-            first_name:    'Yuanway',
-            last_name:     'Customer',
-            full_name:     'Yuanway Customer',
-            email:         req.body.email || 'yuanwayco@gmail.com'
+        payer: {
+            payer_id:     'USER_' + timeNow,
+            payer_name:   'Yuanway Customer',
+            phone_number: '966500000000',
+            email:        email
         }
     };
 
@@ -160,56 +127,61 @@ function _fallbackPayToken(req, res) {
         successcb(result) {
             try {
                 const data  = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                const token = data?.order?.key || data?.credential_token || data?.token;
-                console.log('✅ fallback pay() token:', token);
-                if (!token) return res.status(400).json({ success: false, error: 'لم يُرجع order.key' });
-                return res.json({ success: true, token });
+                console.log('✅ pay() response keys:', Object.keys(data));
+
+                // order.key هو الـ token الذي يستخدمه llpay.min.js
+                const token = data?.order?.key
+                           || data?.credential_token
+                           || data?.token
+                           || data?.key;
+
+                if (!token) {
+                    console.error('❌ لا يوجد token في الرد:', JSON.stringify(data));
+                    return res.status(400).json({ success: false, error: 'لا يوجد token في رد LianLian' });
+                }
+
+                console.log('🎯 token:', token);
+                return res.json({ success: true, token, order_id: data?.order?.id });
             } catch(e) {
-                return res.status(500).json({ success: false, error: 'فشل تحليل رد pay()' });
+                console.error('❌ parse error:', e);
+                return res.status(500).json({ success: false, error: 'parse error' });
             }
         },
         failcb(err) {
-            console.error('❌ fallback pay() فشل:', err);
+            console.error('❌ pay() failed:', err);
             return res.status(400).json({ success: false, error: String(err) });
         }
     });
-}
+});
 
-// ══════════════════════════════════════════
-// المسار 2: تنفيذ الدفع الفعلي بعد confirmPay
-// يستقبل card_token من الـ frontend ويرسله لـ LianLian
-// ══════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+// المسار 2: تأكيد الدفع بعد confirmPay (اختياري)
+// يُستدعى فقط إذا confirmPay أرجع card_token
+// ─────────────────────────────────────────────────────────────
 app.post('/api/process-payment', (req, res) => {
-    console.log('📥 /api/process-payment - card_token:', req.body.card_token?.slice(0,20) + '...');
-    if (!LLPay) return res.status(500).json({ success: false, error: 'SDK غير مهيأ' });
-
     const { card_token, holder_name, amount, currency, email } = req.body;
+    console.log('📥 process-payment | card_token:', card_token?.slice(0,15) + '...');
 
-    if (!card_token) {
-        return res.status(400).json({ success: false, error: 'card_token مطلوب' });
-    }
+    if (!LLPay)       return res.status(500).json({ success: false, error: 'SDK error' });
+    if (!card_token)  return res.status(400).json({ success: false, error: 'card_token مطلوب' });
 
-    const ts  = makeTs();
-    const tid = 'PAY' + ts + String(Date.now()).slice(-4);
-    const oid = 'ORD' + ts.slice(0,10);
-    const amt = Number(amount) || 200.10;
+    const timeNow = Date.now();
+    const ts      = makeTs();
+    const amt     = Number(amount) || 200.10;
 
-    // IP المستخدم
     const userIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
-                || req.headers['x-real-ip']
                 || req.socket?.remoteAddress
                 || '127.0.0.1';
 
-    // ✅ البنية الدقيقة حسب توثيق LianLian الرسمي
     const params = {
-        merchant_transaction_id: tid,
+        merchant_transaction_id: 'PAY_' + timeNow,
         notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
         redirect_url:     'https://yuanway2030.com/payment-methods.html',
         cancel_url:       'https://yuanway2030.com/payment-methods.html',
         country:          'US',
         payment_method:   'inter_credit_card',
         merchant_order: {
-            merchant_order_id:   oid,
+            merchant_order_id:   'ORD_' + timeNow,
             merchant_order_time: ts,
             order_amount:        amt,
             order_currency_code: currency || 'USD',
@@ -238,16 +210,16 @@ app.post('/api/process-payment', (req, res) => {
             installments: 1
         },
         terminal_data: {
-            user_order_ip:                          userIp,
-            user_client_browser_accept_header:      '*/*',
-            user_client_browser_color_depth:        24,
-            user_client_browser_java_enabled:       false,
-            user_client_browser_js_enabled:         true,
-            user_client_browser_language:           'en-US',
-            user_client_browser_screen_height:      1080,
-            user_client_browser_screen_width:       1920,
-            user_client_browser_time_zone_offset:   '180',
-            user_client_browser_user_agent:         'Mozilla/5.0 (compatible; Yuanway/1.0)'
+            user_order_ip:                        userIp,
+            user_client_browser_accept_header:    '*/*',
+            user_client_browser_color_depth:      24,
+            user_client_browser_java_enabled:     false,
+            user_client_browser_js_enabled:       true,
+            user_client_browser_language:         'en-US',
+            user_client_browser_screen_height:    1080,
+            user_client_browser_screen_width:     1920,
+            user_client_browser_time_zone_offset: '180',
+            user_client_browser_user_agent:       'Mozilla/5.0 (compatible)'
         }
     };
 
@@ -256,26 +228,24 @@ app.post('/api/process-payment', (req, res) => {
         successcb(result) {
             try {
                 const data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                console.log('✅ process-payment نجح:', JSON.stringify(data).slice(0, 200));
+                console.log('✅ process-payment success');
                 return res.json({ success: true, data });
             } catch(e) {
-                return res.status(500).json({ success: false, error: 'فشل تحليل رد الدفع' });
+                return res.status(500).json({ success: false, error: 'parse error' });
             }
         },
         failcb(err) {
-            console.error('❌ process-payment فشل:', err);
+            console.error('❌ process-payment fail:', err);
             return res.status(400).json({ success: false, error: String(err) });
         }
     });
 });
 
-// ══════════════════════════════════════════
-// Webhook
-// ══════════════════════════════════════════
+// ─── Webhook ──────────────────────────────────────────────
 app.post('/api/webhook/lianlian', (req, res) => {
-    console.log('📨 Webhook:', JSON.stringify(req.body).slice(0, 300));
-    res.status(200).json({ return_code: 'SUCCESS', return_message: 'OK' });
+    console.log('📨 webhook:', JSON.stringify(req.body).slice(0, 200));
+    res.json({ return_code: 'SUCCESS', return_message: 'OK' });
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 السيرفر جاهز على المنفذ ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server on port ${PORT}`));
