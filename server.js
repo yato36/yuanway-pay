@@ -1,5 +1,5 @@
 const express = require('express');
-const cors = require('cors'); 
+const cors = require('cors');
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
@@ -19,7 +19,7 @@ app.use(express.json());
 process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط:', err));
 process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج:', reason));
 
-app.get('/', (req, res) => res.send("🚀 السيرفر يعمل بنجاح بالهيكلة الجديدة!"));
+app.get('/', (req, res) => res.send("🚀 السيرفر يعمل بنجاح بالهيكلة المكونة من 3 مراحل!"));
 
 const MERCHANT_ID = "202605290003945002";
 
@@ -81,24 +81,39 @@ try {
 }
 
 // ==========================================
-// المسار الأول: جلب مفتاح الإطار (Iframe Token) فقط
+// المسار الأول: جلب مفتاح الإطار (Iframe Token)
 // ==========================================
 app.post('/api/get-iframe-token', (req, res) => {
     console.log("📥 [1] طلب فتح الإطار المدمج...");
     try {
+        if (!LLPay) return res.status(500).json({ success: false, error: "مكتبة الدفع غير جاهزة." });
+
         const timeNow = Date.now();
-        // إعدادات بسيطة جداً فقط لفتح الإطار وتوليد التوكن (بدون مبلغ أو تفاصيل طلب)
+        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+
+        // تم إضافة حقل الـ country وحقول الـ merchant_order المطلوبة لتوليد التوكن
         const params = {
             merchant_transaction_id: "TOK_" + timeNow,
-            payer: {
-                payer_id: req.body.customer?.email || "customer_123"
+            notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
+            country: "US", // ✅ الحقل الذي سبب المشكلة
+            merchant_order: {
+                merchant_order_id: "ORD_" + timeNow,
+                merchant_order_time: timestamp,
+                order_amount: req.body.amount || "10.00",
+                order_currency_code: req.body.currency || "USD",
+                order_description: "Yuan Way Test Order",
+                products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
+            },
+            customer: {
+                customer_type: "I",
+                first_name: req.body.customer?.first_name || "Sami",
+                last_name: req.body.customer?.last_name || "Al-Rashidi",
+                email: req.body.customer?.email || "yuanwayco@gmail.com",
+                phone: req.body.customer?.phone || "+966500000000"
             }
         };
 
-        // نستخدم الدالة الأساسية لاستخراج التوكن
-        const apiCall = LLPay.token ? LLPay.token.bind(LLPay) : LLPay.pay.bind(LLPay);
-
-        apiCall({
+        LLPay.pay({
             params: params,
             successcb: function (result) {
                 try {
@@ -110,6 +125,7 @@ app.post('/api/get-iframe-token', (req, res) => {
                 }
             },
             failcb: function (error) {
+                console.error("❌ خطأ من البوابة في استخراج التوكن:", error);
                 return res.status(400).json({ success: false, error: String(error) });
             }
         });
@@ -131,23 +147,26 @@ app.post('/api/process-payment', (req, res) => {
             merchant_transaction_id: "TXN_" + timeNow,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            payment_method: "CARD", // هنا نخبر البوابة أن الدفع بالبطاقة المشفرة
+            payment_method: "CARD",
             payment_data: {
                 card: {
                     card_token: req.body.card_token // هذا هو الرمز الذي ستجلبه الواجهة الأمامية
                 }
             },
             merchant_order: {
-                merchant_order_id: "ORD_" + timeNow,
+                merchant_order_id: "ORD_PAY_" + timeNow,
                 merchant_order_time: timestamp,
                 order_amount: req.body.amount || "10.00",
                 order_currency_code: req.body.currency || "USD",
                 order_description: "Yuan Way Order",
                 products: [{ product_id: "101", name: "Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
             },
-            payer: {
-                payer_id: req.body.customer?.email || "customer_123",
-                email: req.body.customer?.email || "yuanwayco@gmail.com"
+            customer: {
+                customer_type: "I",
+                first_name: req.body.customer?.first_name || "Sami",
+                last_name: req.body.customer?.last_name || "Al-Rashidi",
+                email: req.body.customer?.email || "yuanwayco@gmail.com",
+                phone: req.body.customer?.phone || "+966500000000"
             }
         };
 
@@ -162,6 +181,7 @@ app.post('/api/process-payment', (req, res) => {
                 }
             },
             failcb: function (error) {
+                console.error("❌ خطأ من البوابة في الخصم:", error);
                 return res.status(400).json({ success: false, error: String(error) });
             }
         });
