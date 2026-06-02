@@ -99,46 +99,37 @@ app.post('/api/get-iframe-token', (req, res) => {
         const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
-        // 🚨 هنا تم حقن الاسم ورقم الهاتف في كل الحقول الممكنة لتفادي الخطأ
+        // ✅ قراءة بيانات العميل من الطلب القادم من الـ frontend
+        const payerName  = req.body.payer_name  || "Sami Alrashidi";
+        const payerPhone = req.body.phone        || "966500000000";
+        const payerEmail = req.body.email        || "yuanwayco@gmail.com";
+        const amount     = req.body.amount       || "200.10";
+        const currency   = req.body.currency     || "USD";
+
         const params = {
             merchant_transaction_id: "TXN_" + timeNow,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
             merchant_order: {
-                merchant_order_id: "ORD_" + timeNow,
-                merchant_order_time: timestamp,
-                order_amount: req.body.amount || "200.10", 
-                order_currency_code: req.body.currency || "USD",
-                order_description: "Yuan Way Test Order",
-                products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "200.10", quantity: 1, category: "test" }]
+                merchant_order_id:    "ORD_" + timeNow,
+                merchant_order_time:  timestamp,
+                order_amount:         amount,
+                order_currency_code:  currency,
+                order_description:    "Yuan Way Order",
+                products: [{
+                    product_id: "101",
+                    name:       "Yuanway Product",
+                    price:      amount,
+                    quantity:   1,
+                    category:   "general"
+                }]
             },
-            // الصيغة 1: الكائن القياسي
             payer: {
-                payer_id: "USER_" + timeNow,
-                payer_name: "Sami Alrashidi",
-                phone_number: "966500000000",
-                phoneNumber: "966500000000",
-                email: "yuanwayco@gmail.com"
-            },
-            // الصيغة 2: كائن الفوترة الدولي
-            billing_address: {
-                first_name: "Sami",
-                last_name: "Alrashidi",
-                phone_number: "966500000000",
-                phoneNumber: "966500000000",
-                phone: "966500000000",
-                email: "yuanwayco@gmail.com",
-                country: "SA"
-            },
-            // الصيغة 3: الدعم القديم
-            payer_info: {
-                payer_type: "USER",
-                payer_id: "USER_" + timeNow,
-                payer_name: "Sami Alrashidi",
-                payer_email: "yuanwayco@gmail.com",
-                payer_phone: "966500000000",
-                phone_number: "966500000000",
-                phoneNumber: "966500000000"
+                payer_id:     "USER_" + timeNow,
+                payer_name:   payerName,
+                phone_number: payerPhone,
+                phoneNumber:  payerPhone,
+                email:        payerEmail
             }
         };
 
