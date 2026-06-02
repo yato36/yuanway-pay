@@ -137,20 +137,26 @@ app.post('/api/get-iframe-token', (req, res) => {
 // ==========================================
 // المسار الثاني: الدفع الفعلي (سحب المبلغ بالـ Card Token)
 // ==========================================
+// ==========================================
+// المسار الثاني المضمون: الدفع الفعلي وسحب المبلغ
+// ==========================================
 app.post('/api/process-payment', (req, res) => {
-    console.log("📥 [2] طلب خصم المبلغ باستخدام Card Token...");
+    console.log("📥 [2] طلب خصم المبلغ باستخدام Card Token القياسي...");
     try {
+        if (!LLPay) return res.status(500).json({ success: false, error: "المكتبة غير مهيأة" });
+
         const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
+        // صياغة البارامترات بأحرف صغيرة متوافقة تماماً مع شروط الـ API لمنع خطأ الـ empty or incorrect
         const params = {
-            merchant_transaction_id: "TXN_" + timeNow,
+            merchant_transaction_id: "TXN_PAY_" + timeNow,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            payment_method: "card", // 🔥 التعديل هنا: أحرف صغيرة فقط!
+            payment_method: "card", // تأكيد كتابتها صغيرة بالكامل هنا
             payment_data: {
                 card: {
-                    card_token: req.body.card_token // التوكن الذي جلبناه بنجاح من الواجهة
+                    card_token: req.body.card_token // الرمز المستخرج من الواجهة الأمامية بنجاح
                 }
             },
             merchant_order: {
@@ -158,35 +164,41 @@ app.post('/api/process-payment', (req, res) => {
                 merchant_order_time: timestamp,
                 order_amount: req.body.amount || "10.00",
                 order_currency_code: req.body.currency || "USD",
-                order_description: "Yuan Way Order",
-                products: [{ product_id: "101", name: "Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
+                order_description: "Yuan Way Order Total",
+                products: [{ 
+                    product_id: "101", 
+                    name: "Yuanway Product", 
+                    price: req.body.amount || "10.00", 
+                    quantity: 1, 
+                    category: "E-commerce" 
+                }]
             },
-            customer: {
-                customer_type: "I",
-                first_name: req.body.customer?.first_name || "Sami",
-                last_name: req.body.customer?.last_name || "Al-Rashidi",
-                email: req.body.customer?.email || "yuanwayco@gmail.com",
-                phone: req.body.customer?.phone || "+966500000000"
+            payer: {
+                payer_id: req.body.customer?.email || "customer_8398",
+                payer_name: req.body.customer?.full_name || "Sami Alrashidi",
+                email: req.body.customer?.email || "yuanwayco@gmail.com"
             }
         };
 
         LLPay.pay({
             params: params,
             successcb: function (result) {
+                console.log("✅ استجابة ناجحة للخصم من LianLian!");
                 try {
                     const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
                     return res.json({ success: true, data: responseData });
                 } catch (e) {
-                    return res.status(500).json({ success: false, error: "فشل قراءة الرد" });
+                    return res.status(500).json({ success: false, error: "فشل معالجة رد البوابة النهائي" });
                 }
             },
             failcb: function (error) {
-                console.error("❌ خطأ من البوابة في الخصم:", error);
+                console.error("❌ رفض من البوابة في عملية السحب الفعلي:", error);
                 return res.status(400).json({ success: false, error: String(error) });
             }
         });
     } catch (err) {
-        return res.status(500).json({ success: false, error: "خطأ داخلي" });
+        console.error("🔥 خطأ استثنائي בסيرفر:", err);
+        return res.status(500).json({ success: false, error: "حدث خطأ داخلي بالنظام" });
     }
 });
 
