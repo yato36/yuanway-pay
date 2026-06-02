@@ -88,83 +88,44 @@ try {
     console.error("🔥 تحذير: خطأ في تهيئة LianLian:", initError);
 }
 
-app.post('/api/get-iframe-token', (req, res) => {
-    console.log("📥 طلب جديد وصل إلى مسار الدفع!");
+// إضافة هذا المسار إلى ملف server.js
+app.post('/api/direct-pay', async (req, res) => {
+    console.log("📥 طلب دفع مباشر وصل إلى السيرفر!");
+    
+    const { amount, card_number, card_expiry, card_cvv, card_name } = req.body;
 
-    try {
-        if (!LLPay) {
-            return res.status(500).json({ success: false, error: "مكتبة الدفع لم تعمل بشكل صحيح على السيرفر." });
+    // بناء الهيكل الذي تتطلبه الـ Direct API
+    const params = {
+        "merchant_transaction_id": "TXN_" + Date.now(),
+        "merchant_order": {
+            "merchant_order_id": "ORD_" + Date.now(),
+            "order_amount": amount,
+            "order_currency_code": "USD"
+        },
+        "payment_method": {
+            "card_number": card_number,
+            "card_expiry": card_expiry,
+            "card_cvv": card_cvv,
+            "card_name": card_name
+        },
+        "payer_info": {
+            "payer_name": card_name,
+            "phone_number": "966500000000" // رقم افتراضي للاختبار
         }
+    };
 
-        const timeNow = Date.now();
-        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-
-        // 🚨 هنا تم حقن الاسم ورقم الهاتف في كل الحقول الممكنة لتفادي الخطأ
-        const params = {
-            merchant_transaction_id: "TXN_" + timeNow,
-            notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-            country: "US",
-            merchant_order: {
-                merchant_order_id: "ORD_" + timeNow,
-                merchant_order_time: timestamp,
-                order_amount: req.body.amount || "200.10", 
-                order_currency_code: req.body.currency || "USD",
-                order_description: "Yuan Way Test Order",
-                products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "200.10", quantity: 1, category: "test" }]
-            },
-            // الصيغة 1: الكائن القياسي
-            payer: {
-                payer_id: "USER_" + timeNow,
-                payer_name: "Sami Alrashidi",
-                phone_number: "966500000000",
-                phoneNumber: "966500000000",
-                email: "yuanwayco@gmail.com"
-            },
-            // الصيغة 2: كائن الفوترة الدولي
-            billing_address: {
-                first_name: "Sami",
-                last_name: "Alrashidi",
-                phone_number: "966500000000",
-                phoneNumber: "966500000000",
-                phone: "966500000000",
-                email: "yuanwayco@gmail.com",
-                country: "SA"
-            },
-            // الصيغة 3: الدعم القديم
-            payer_info: {
-                payer_type: "USER",
-                payer_id: "USER_" + timeNow,
-                payer_name: "Sami Alrashidi",
-                payer_email: "yuanwayco@gmail.com",
-                payer_phone: "966500000000",
-                phone_number: "966500000000",
-                phoneNumber: "966500000000"
-            }
-        };
-
-        LLPay.pay({
-            params: params,
-            successcb: function (result) {
-                console.log("✅ رد ناجح من LianLian!");
-                try {
-                    const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                    const iframeToken = responseData.order?.key || responseData.credential_token || responseData.token;
-                    return res.json({ success: true, data: responseData, token: iframeToken });
-                } catch (parseError) {
-                    console.error("❌ فشل في قراءة بيانات البوابة:", parseError);
-                    return res.status(500).json({ success: false, error: "فشل تحليل البيانات" });
-                }
-            },
-            failcb: function (error) {
-                console.error("❌ خطأ من البوابة:", error);
-                return res.status(400).json({ success: false, error: String(error) });
-            }
-        });
-
-    } catch (routeError) {
-        console.error("🔥 خطأ مفاجئ داخل المسار:", routeError);
-        return res.status(500).json({ success: false, error: "حدث خطأ داخلي أثناء معالجة الطلب" });
-    }
+    // استدعاء مكتبة ليان ليان بالوضع المباشر
+    LLPay.pay({
+        params: params,
+        successcb: function (result) {
+            console.log("✅ الدفع المباشر نجح!");
+            res.json({ success: true, data: result });
+        },
+        failcb: function (error) {
+            console.error("❌ خطأ الدفع المباشر:", error);
+            res.status(400).json({ success: false, error: error.message });
+        }
+    });
 });
 
 const PORT = process.env.PORT || 3000;
