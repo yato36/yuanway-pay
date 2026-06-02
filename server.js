@@ -4,26 +4,23 @@ const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
 
-// إعداد CORS
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
 
-// معالجة الأخطاء الحرجة
-process.on('uncaughtException', (err) => console.error('🔥 [CRITICAL]:', err));
-process.on('unhandledRejection', (reason) => console.error('🔥 [CRITICAL]:', reason));
-
-app.get('/', (req, res) => res.send("🚀 السيرفر يعمل بنجاح!"));
+// تشخيص المسارات: هذا يطبع أي طلب يصل للسيرفر لنعرف لماذا يحدث 404
+app.use((req, res, next) => {
+    console.log(`📥 طلب جديد: ${req.method} ${req.url}`);
+    next();
+});
 
 const MERCHANT_ID = "202605290003945002";
 
-// دالة تنسيق المفاتيح
 function formatKey(keyStr, type) {
     const clean = keyStr.replace(/-----.*?-----/g, '').replace(/[\r\n\s]+/g, '');
     if (!clean || clean.length < 100) return "INVALID_KEY";
     const lines = clean.match(/.{1,64}/g).join('\n');
     return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
 }
-
 const RAW_PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
 re++V0CTOKGCBCvooWViSODim7qgH8+JW+xa0hT6eoS1jMxrNAFbuKA3sKkYvDk8
 S/U+zTDTttCv1B18QRzyuLkC5ASRpvR5jBODDayUzL2vC85AbyOP+rFkqMDfNyFy
@@ -70,64 +67,40 @@ try {
         merchant_id: MERCHANT_ID,
         is_print_log: true
     });
-    console.log("✅ تم تهيئة مكتبة LianLian");
-} catch (e) {
-    console.error("🔥 خطأ تهيئة:", e);
-}
+} catch (e) { console.error("🔥 خطأ تهيئة:", e); }
 
-// مسار الدفع المباشر (Direct API)
+// المسار الصحيح والموحد للدفع المباشر
 app.post('/api/direct-pay', async (req, res) => {
-    console.log("📥 استلمنا طلب دفع مباشر:", req.body);
-
     const { amount, card_number, card_expiry, card_cvv, card_name } = req.body;
 
-    // 1. تحقق من البيانات قبل إرسالها (لمنع 400 Bad Request)
-    if (!amount || !card_number || !card_expiry || !card_cvv || !card_name) {
-        return res.status(400).json({ success: false, error: "بيانات ناقصة، تأكد من إرسال جميع الحقول" });
+    if (!amount || !card_number) {
+        return res.status(400).json({ success: false, error: "بيانات ناقصة" });
     }
 
-    try {
-        const timeNow = Date.now();
-        
-        // بناء الهيكل القياسي للـ Direct API
-        const params = {
-            "merchant_transaction_id": "TXN_" + timeNow,
-            "merchant_order": {
-                "merchant_order_id": "ORD_" + timeNow,
-                "order_amount": amount,
-                "order_currency_code": "USD"
-            },
-            "payment_method": {
-                "card_number": card_number,
-                "card_expiry": card_expiry,
-                "card_cvv": card_cvv,
-                "card_name": card_name
-            },
-            "payer_info": {
-                "payer_name": card_name,
-                "phone_number": "966500000000"
-            }
-        };
+    const params = {
+        "merchant_transaction_id": "TXN_" + Date.now(),
+        "merchant_order": {
+            "merchant_order_id": "ORD_" + Date.now(),
+            "order_amount": amount,
+            "order_currency_code": "USD"
+        },
+        "payment_method": {
+            "card_number": card_number,
+            "card_expiry": card_expiry,
+            "card_cvv": card_cvv,
+            "card_name": card_name
+        },
+        "payer_info": {
+            "payer_name": card_name,
+            "phone_number": "966500000000"
+        }
+    };
 
-        console.log("🚀 جاري الإرسال إلى ليان ليان بالبيانات:", JSON.stringify(params));
-
-        // استدعاء المكتبة
-        LLPay.pay({
-            params: params,
-            successcb: (result) => {
-                console.log("✅ نجاح من البوابة:", result);
-                res.json({ success: true, data: result });
-            },
-            failcb: (error) => {
-                console.error("❌ خطأ من البوابة:", error);
-                res.status(400).json({ success: false, error: error.message || "خطأ غير معروف في البوابة" });
-            }
-        });
-
-    } catch (e) {
-        console.error("🔥 خطأ داخلي:", e);
-        res.status(500).json({ success: false, error: e.message });
-    }
+    LLPay.pay({
+        params: params,
+        successcb: (result) => res.json({ success: true, data: result }),
+        failcb: (error) => res.status(400).json({ success: false, error: error.message })
+    });
 });
 
 const PORT = process.env.PORT || 3000;
