@@ -89,7 +89,7 @@ try {
 }
 
 // إضافة هذا المسار إلى ملف server.js
-app.post('/api/direct-pay', async (req, res) => {
+app.post('/api/get-iframe-token', (req, res) => {
     console.log("📥 طلب دفع مباشر وصل إلى السيرفر!");
     
     const { amount, card_number, card_expiry, card_cvv, card_name } = req.body;
