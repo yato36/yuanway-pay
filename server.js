@@ -111,14 +111,15 @@ app.post('/api/get-iframe-token', (req, res) => {
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
         // تعديل الـ params ليتضمن الحقول المطلوبة للبوابة لمنع أخطاء الـ front_model
+        // تعديل الـ params بالقيم الصغيرة (lowercase) لتوافق شروط البوابة
         const params = {
             merchant_transaction_id: "TXN_" + timeNow,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             redirect_url: "https://yuanway2030.com/payment-methods.html",
             cancel_url: "https://yuanway2030.com/payment-methods.html",
             country: "US",
-            front_model: "IFRAME",      // الحقل الحاسم المنتظر في بيئة الـ Sandbox
-            payment_method: "CARD",    // تحديد نوع الدفع بالبطاقات لتهيئة الـ Iframe بشكل صحيح
+            front_model: "iframe",      // ✅ تم التعديل إلى أحرف صغيرة
+            payment_method: "card",    // ✅ تم التعديل إلى أحرف صغيرة
             merchant_order: {
                 merchant_order_id: "ORD_" + timeNow,
                 merchant_order_time: timestamp,
