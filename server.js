@@ -27,7 +27,10 @@ function formatKey(keyStr, type) {
     const clean = keyStr.replace(/-----.*?-----/g, '').replace(/[\r\n\s]+/g, '');
     if (!clean || clean.length < 100) return "INVALID_KEY";
     const lines = clean.match(/.{1,64}/g).join('\n');
-    return `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
+    const formatted = `-----BEGIN ${type}-----\n${lines}\n-----END ${type}-----`;
+    
+    // 🔥 هنا التعديل: تحويل المفتاح إلى Buffer كما تطلب المكتبة تماماً
+    return Buffer.from(formatted, 'utf-8');
 }
 
 const RAW_PRIVATE_KEY = `MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC5mS50324+Eb2I
