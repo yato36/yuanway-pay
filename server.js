@@ -1,36 +1,22 @@
 const express = require('express');
-const cors = require('cors'); 
+const cors = require('cors');
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
 
-app.use((req, res, next) => {
-    const allowedOrigin = req.headers.origin || '*';
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    next();
-});
+// إعداد CORS
+app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json());
 
-process.on('uncaughtException', (err) => {
-    console.error('🔥 [CRITICAL] خطأ غير ملتقط:', err);
-});
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('🔥 [CRITICAL] وعد غير معالج:', reason);
-});
+// معالجة الأخطاء الحرجة
+process.on('uncaughtException', (err) => console.error('🔥 [CRITICAL]:', err));
+process.on('unhandledRejection', (reason) => console.error('🔥 [CRITICAL]:', reason));
 
-app.get('/', (req, res) => {
-    res.send("🚀 السيرفر يعمل بنجاح ومحمي من الانهيار!");
-});
+app.get('/', (req, res) => res.send("🚀 السيرفر يعمل بنجاح!"));
 
 const MERCHANT_ID = "202605290003945002";
 
+// دالة تنسيق المفاتيح
 function formatKey(keyStr, type) {
     const clean = keyStr.replace(/-----.*?-----/g, '').replace(/[\r\n\s]+/g, '');
     if (!clean || clean.length < 100) return "INVALID_KEY";
@@ -73,6 +59,7 @@ pirxEcIkDEqjSB4oqQiqwHMCyHhxmym58vQziCG2Y+kfvCZVmFh5FteQ2krSt1Av
 dD/rbmHrBx+2WKGsTD2mUIqF8g8cmy6M5/3+wSu54A8+gEZUX4jDoF6nT7Hq1Goe
 jQIDAQAB`;
 
+// تهيئة المكتبة
 let LLPay;
 try {
     LLPay = new LLPaySdk({
@@ -83,52 +70,65 @@ try {
         merchant_id: MERCHANT_ID,
         is_print_log: true
     });
-    console.log("✅ تم تهيئة مكتبة LianLian بنجاح");
-} catch (initError) {
-    console.error("🔥 تحذير: خطأ في تهيئة LianLian:", initError);
+    console.log("✅ تم تهيئة مكتبة LianLian");
+} catch (e) {
+    console.error("🔥 خطأ تهيئة:", e);
 }
 
-// إضافة هذا المسار إلى ملف server.js
-app.post('/api/get-iframe-token', (req, res) => {
-    console.log("📥 طلب دفع مباشر وصل إلى السيرفر!");
-    
+// مسار الدفع المباشر (Direct API)
+app.post('/api/direct-pay', async (req, res) => {
+    console.log("📥 استلمنا طلب دفع مباشر:", req.body);
+
     const { amount, card_number, card_expiry, card_cvv, card_name } = req.body;
 
-    // بناء الهيكل الذي تتطلبه الـ Direct API
-    const params = {
-        "merchant_transaction_id": "TXN_" + Date.now(),
-        "merchant_order": {
-            "merchant_order_id": "ORD_" + Date.now(),
-            "order_amount": amount,
-            "order_currency_code": "USD"
-        },
-        "payment_method": {
-            "card_number": card_number,
-            "card_expiry": card_expiry,
-            "card_cvv": card_cvv,
-            "card_name": card_name
-        },
-        "payer_info": {
-            "payer_name": card_name,
-            "phone_number": "966500000000" // رقم افتراضي للاختبار
-        }
-    };
+    // 1. تحقق من البيانات قبل إرسالها (لمنع 400 Bad Request)
+    if (!amount || !card_number || !card_expiry || !card_cvv || !card_name) {
+        return res.status(400).json({ success: false, error: "بيانات ناقصة، تأكد من إرسال جميع الحقول" });
+    }
 
-    // استدعاء مكتبة ليان ليان بالوضع المباشر
-    LLPay.pay({
-        params: params,
-        successcb: function (result) {
-            console.log("✅ الدفع المباشر نجح!");
-            res.json({ success: true, data: result });
-        },
-        failcb: function (error) {
-            console.error("❌ خطأ الدفع المباشر:", error);
-            res.status(400).json({ success: false, error: error.message });
-        }
-    });
+    try {
+        const timeNow = Date.now();
+        
+        // بناء الهيكل القياسي للـ Direct API
+        const params = {
+            "merchant_transaction_id": "TXN_" + timeNow,
+            "merchant_order": {
+                "merchant_order_id": "ORD_" + timeNow,
+                "order_amount": amount,
+                "order_currency_code": "USD"
+            },
+            "payment_method": {
+                "card_number": card_number,
+                "card_expiry": card_expiry,
+                "card_cvv": card_cvv,
+                "card_name": card_name
+            },
+            "payer_info": {
+                "payer_name": card_name,
+                "phone_number": "966500000000"
+            }
+        };
+
+        console.log("🚀 جاري الإرسال إلى ليان ليان بالبيانات:", JSON.stringify(params));
+
+        // استدعاء المكتبة
+        LLPay.pay({
+            params: params,
+            successcb: (result) => {
+                console.log("✅ نجاح من البوابة:", result);
+                res.json({ success: true, data: result });
+            },
+            failcb: (error) => {
+                console.error("❌ خطأ من البوابة:", error);
+                res.status(400).json({ success: false, error: error.message || "خطأ غير معروف في البوابة" });
+            }
+        });
+
+    } catch (e) {
+        console.error("🔥 خطأ داخلي:", e);
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 السيرفر يعمل بنجاح ومحمي على المنفذ ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 السيرفر يعمل على ${PORT}`));
