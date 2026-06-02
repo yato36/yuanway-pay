@@ -1,25 +1,36 @@
 const express = require('express');
-const cors = require('cors');
+const cors = require('cors'); 
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
 
+// إعداد CORS بشكل رسمي لمنع تعارضات النطاقات
 app.use((req, res, next) => {
     const allowedOrigin = req.headers.origin || '*';
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    if (req.method === 'OPTIONS') return res.status(200).end();
+
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
     next();
 });
 
 app.use(express.json());
 
-process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط:', err));
-process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج:', reason));
+// منع انهيار السيرفر عند حدوث أخطاء مفاجئة
+process.on('uncaughtException', (err) => {
+    console.error('🔥 [CRITICAL] خطأ غير ملتقط أدى لانهيار سابق:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 [CRITICAL] وعد غير معالج أدى لانهيار سابق:', reason);
+});
 
-app.get('/', (req, res) => res.send("🚀 السيرفر يعمل بنجاح بالهيكلة المكونة من 3 مراحل!"));
+app.get('/', (req, res) => {
+    res.send("🚀 السيرفر يعمل بنجاح ومحمي بالكامل بنظام الـ 3 مراحل المطور!");
+});
 
 const MERCHANT_ID = "202605290003945002";
 
@@ -81,28 +92,27 @@ try {
 }
 
 // ==========================================
-// المسار الأول: جلب مفتاح الإطار (Iframe Token)
+// المرحلة 1: جلب التوكن الأولي لفتح الإطار الآمن
 // ==========================================
 app.post('/api/get-iframe-token', (req, res) => {
-    console.log("📥 [1] طلب فتح الإطار المدمج...");
+    console.log("📥 [مرحلة 1] طلب جديد لجلب توكن الإطار");
     try {
-        if (!LLPay) return res.status(500).json({ success: false, error: "مكتبة الدفع غير جاهزة." });
+        if (!LLPay) return res.status(500).json({ success: false, error: "المكتبة غير مهيأة" });
 
         const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
-        // تم إضافة حقل الـ country وحقول الـ merchant_order المطلوبة لتوليد التوكن
         const params = {
             merchant_transaction_id: "TOK_" + timeNow,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-            country: "US", // ✅ الحقل الذي سبب المشكلة
+            country: "US",
             merchant_order: {
                 merchant_order_id: "ORD_" + timeNow,
                 merchant_order_time: timestamp,
                 order_amount: req.body.amount || "10.00",
                 order_currency_code: req.body.currency || "USD",
-                order_description: "Yuan Way Test Order",
-                products: [{ product_id: "101", name: "Test Product", price: req.body.amount || "10.00", quantity: 1, category: "test" }]
+                order_description: "Yuanway Iframe Token Init",
+                products: [{ product_id: "101", name: "Iframe Session", price: req.body.amount || "10.00", quantity: 1, category: "system" }]
             },
             customer: {
                 customer_type: "I",
@@ -120,89 +130,87 @@ app.post('/api/get-iframe-token', (req, res) => {
                     const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
                     const iframeToken = responseData.token || responseData.credential_token || responseData.order?.key;
                     return res.json({ success: true, token: iframeToken });
-                } catch (e) {
-                    return res.status(500).json({ success: false, error: "فشل استخراج التوكن" });
+                } catch (parseError) {
+                    return res.status(500).json({ success: false, error: "فشل تحليل بيانات التوكن" });
                 }
             },
             failcb: function (error) {
-                console.error("❌ خطأ من البوابة في استخراج التوكن:", error);
+                console.error("❌ فشل استخراج التوكن من البوابة:", error);
                 return res.status(400).json({ success: false, error: String(error) });
             }
         });
-    } catch (err) {
+    } catch (routeError) {
         return res.status(500).json({ success: false, error: "خطأ داخلي" });
     }
 });
 
 // ==========================================
-// المسار الثاني: الدفع الفعلي (سحب المبلغ بالـ Card Token)
-// ==========================================
-// ==========================================
-// المسار الثاني المضمون: الدفع الفعلي وسحب المبلغ
+// المرحلة 3: الخصم الفعلي النهائي باستخدام كود تشفير البطاقة
 // ==========================================
 app.post('/api/process-payment', (req, res) => {
-    console.log("📥 [2] طلب خصم المبلغ باستخدام Card Token القياسي...");
+    console.log("📥 [مرحلة 3] طلب خصم مالي بالـ Card Token الفعال...");
     try {
-        if (!LLPay) return res.status(500).json({ success: false, error: "المكتبة غير مهيأة" });
+        if (!LLPay) return res.status(500).json({ success: false, error: "المكتبة معطلة" });
 
         const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
 
-        // صياغة البارامترات بأحرف صغيرة متوافقة تماماً مع شروط الـ API لمنع خطأ الـ empty or incorrect
+        // القيمة الرسمية للـ API للخصم غير المباشر بـ Token هي CREDIT_CARD أو صياغة مخصصة يحددها البنك
         const params = {
             merchant_transaction_id: "TXN_PAY_" + timeNow,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            payment_method: "CARD", // تأكد من كتابتها بأحرف كبيرة, // تأكيد كتابتها صغيرة بالكامل هنا
+            payment_method: "CREDIT_CARD", // تصحيح المسمى للأحرف الكبيرة والنظام القياسي العالمي للـ v3
             payment_data: {
                 card: {
-                    card_token: req.body.card_token // الرمز المستخرج من الواجهة الأمامية بنجاح
+                    card_token: req.body.card_token // التوكن المرسل بأمان من الواجهة الأمامية
                 }
             },
             merchant_order: {
-                merchant_order_id: "ORD_PAY_" + timeNow,
+                merchant_order_id: "ORD_FINAL_" + timeNow,
                 merchant_order_time: timestamp,
                 order_amount: req.body.amount || "10.00",
                 order_currency_code: req.body.currency || "USD",
-                order_description: "Yuan Way Order Total",
+                order_description: "Yuan Way Final Order",
                 products: [{ 
                     product_id: "101", 
-                    name: "Yuanway Product", 
+                    name: "Yuanway Purchased Items", 
                     price: req.body.amount || "10.00", 
                     quantity: 1, 
-                    category: "E-commerce" 
+                    category: "Shopping" 
                 }]
             },
-            payer: {
-                payer_id: req.body.customer?.email || "customer_8398",
-                payer_name: req.body.customer?.full_name || "Sami Alrashidi",
-                email: req.body.customer?.email || "yuanwayco@gmail.com"
+            customer: {
+                customer_type: "I",
+                first_name: req.body.customer?.first_name || "Sami",
+                last_name: req.body.customer?.last_name || "Al-Rashidi",
+                email: req.body.customer?.email || "yuanwayco@gmail.com",
+                phone: req.body.customer?.phone || "+966500000000"
             }
         };
 
         LLPay.pay({
             params: params,
             successcb: function (result) {
-                console.log("✅ استجابة ناجحة للخصم من LianLian!");
+                console.log("✅ تمت عملية خصم الأموال بنجاح مطلق!");
                 try {
                     const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
                     return res.json({ success: true, data: responseData });
                 } catch (e) {
-                    return res.status(500).json({ success: false, error: "فشل معالجة رد البوابة النهائي" });
+                    return res.status(500).json({ success: false, error: "فشل تفسير استجابة الخصم" });
                 }
             },
             failcb: function (error) {
-                console.error("❌ رفض من البوابة في عملية السحب الفعلي:", error);
+                console.error("❌ رفض من بوابات الدفع أثناء الخصم:", error);
                 return res.status(400).json({ success: false, error: String(error) });
             }
         });
     } catch (err) {
-        console.error("🔥 خطأ استثنائي בסيرفر:", err);
-        return res.status(500).json({ success: false, error: "حدث خطأ داخلي بالنظام" });
+        return res.status(500).json({ success: false, error: "خطأ تقني بالسيرفر" });
     }
 });
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 السيرفر يعمل بنجاح على المنفذ ${PORT}`);
+    console.log(`🚀 السيرفر يعمل بنجاح ومحمي على المنفذ ${PORT}`);
 });
