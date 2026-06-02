@@ -19,7 +19,7 @@ app.use(express.json());
 process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط:', err));
 process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج:', reason));
 
-app.get('/', (req, res) => res.send("🚀 السيرفر يعمل بكفاءة ومحدث بالصيغة النهائية المطلوبة من الدعم الفني!"));
+app.get('/', (req, res) => res.send("🚀 السيرفر جاهز تماماً للعملية النهائية!"));
 
 const MERCHANT_ID = "202605290003945002";
 
@@ -100,10 +100,12 @@ app.post('/api/get-iframe-token', (req, res) => {
                 order_description: "Yuanway Session Init",
                 products: [{ 
                     product_id: "101", 
+                    sku: "SKU_101", // 🔥 تمت إضافة الحقل الإجباري
                     name: "Session Token", 
                     price: orderAmount, 
                     quantity: 1, 
-                    category: "system" 
+                    category: "system",
+                    shipping_provider: "other" // 🔥 تمت إضافة الحقل الإجباري
                 }]
             },
             customer: {
@@ -135,9 +137,9 @@ app.post('/api/get-iframe-token', (req, res) => {
     }
 });
 
-// 2. طلب السحب المالي (الهيكلة الذهبية)
+// 2. طلب السحب المالي النهائي
 app.post('/api/process-payment', (req, res) => {
-    console.log("📥 [مرحلة 3] طلب سحب مالي نهائي بالهيكلة المعتمدة...");
+    console.log("📥 [مرحلة 3] طلب سحب مالي نهائي...");
     try {
         const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
@@ -150,7 +152,7 @@ app.post('/api/process-payment', (req, res) => {
             redirect_url: "https://yuanway2030.com/payment-methods.html",
             cancel_url: "https://yuanway2030.com/payment-methods.html",
             country: "US",
-            payment_method: "inter_credit_card", // 🔥 الكلمة السرية التي طلبها الدعم!
+            payment_method: "inter_credit_card", 
             merchant_order: {
                 merchant_order_id: "ORD_PAY_" + timeNow,
                 merchant_order_time: timestamp,
@@ -158,11 +160,12 @@ app.post('/api/process-payment', (req, res) => {
                 order_currency_code: req.body.currency || "USD",
                 products: [{ 
                     product_id: "101", 
+                    sku: "SKU_101", // 🔥 تمت إضافة الـ SKU كما طلبت البوابة
                     name: "Yuanway Order", 
                     price: orderAmount, 
                     quantity: 1, 
                     url: "https://yuanway2030.com",
-                    shipping_provider: "other" 
+                    shipping_provider: "other" // 🔥 تمت إضافة مقدم الشحن كما طلبت البوابة
                 }]
             },
             customer: {
@@ -175,11 +178,11 @@ app.post('/api/process-payment', (req, res) => {
             payment_data: {
                 card: {
                     card_token: req.body.card_token,
-                    holder_name: req.body.holder_name || "Sami Alrashidi" // 🔥 الاسم يُرسل هنا كما طلبوا!
+                    holder_name: req.body.holder_name || "Sami Alrashidi" 
                 },
                 installments: 1
             },
-            terminal_data: { // 🔥 بيانات المتصفح الإجبارية
+            terminal_data: { 
                 user_order_ip: "127.0.0.1",
                 user_client_browser_accept_header: "*/*",
                 user_client_browser_color_depth: 24,
