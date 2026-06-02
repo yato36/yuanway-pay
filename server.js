@@ -16,10 +16,10 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط:', err));
-process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج:', reason));
+process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط بالسيرفر:', err));
+process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج بالسيرفر:', reason));
 
-app.get('/', (req, res) => res.send("🚀 السيرفر يعمل ومستعد للمرحلة الأخيرة!"));
+app.get('/', (req, res) => res.send("🚀 السيرفر يعمل ومحدث للهيكلية الدولية المعتمدة من شركة LianLian!"));
 
 const MERCHANT_ID = "202605290003945002";
 
@@ -60,7 +60,7 @@ o1/KuCEgl6yMZxZ59UD0/Z7G`;
 const RAW_PUBLIC_KEY = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuZkudN9uPhG9iK3vvldA
 kzihggQr6KFlYkjg4pu6oB/PiVvsWtIU+nqEtYzMazQBW7igN7CpGLw5PEv1Ps0w
 07bQr9QdfEEc8ri5AuQEkab0eYwTgw2slMy9rwvOQG8jj/qxZKjA3zchcowe34i8
-pirxEcIkDEqjSB4oqQiqwHMCyHhxmym58vQziCG2Y+kfvCZVmFh5FteQ2krSt1Av
+pirxEcIkDEqjSB4oqQiqwHMCyHhxmym58vQziCG2Y+kfvCZVmFteQ2krSt1Av
 26NnUnZ75SEPFGcpvKvovk7Mri1nIyv0GB/mzUt44FsGDOSUZkrM3mtV+sTpEWrW
 dD/rbmHrBx+2WKGsTD2mUIqF8g8cmy6M5/3+wSu54A8+gEZUX4jDoF6nT7Hq1Goe
 jQIDAQAB`;
@@ -75,43 +75,41 @@ try {
         merchant_id: MERCHANT_ID,
         is_print_log: true
     });
-} catch (initError) {
-    console.error("🔥 خطأ في تهيئة المكتبة:", initError);
+    console.log("✅ تم تهيئة مكتبة نظام التاجر بنجاح");
+} catch (e) {
+    console.error(e);
 }
 
-// 1. مسار جلب التوكن (بدون تحديد طريقة الدفع لكي لا تطلب البوابة رقم البطاقة)
+// 1. مسار توليد توكن تهيئة الإطار الآمن للمتصفح
 app.post('/api/get-iframe-token', (req, res) => {
     try {
+        const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
         const orderAmount = Number(req.body.amount) || 10.00;
-        const serverGeneratedOrderId = "ORD_" + Date.now();
+        const generatedOrderId = "ORD_" + timeNow;
 
         const params = {
-            merchant_transaction_id: "TOK_" + serverGeneratedOrderId, 
+            merchant_transaction_id: "TOK_" + generatedOrderId,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            // 🔥 تم حذف payment_method من هنا
             merchant_order: {
-                merchant_order_id: serverGeneratedOrderId, 
+                merchant_order_id: generatedOrderId,
                 merchant_order_time: timestamp,
                 order_amount: orderAmount,
-                order_currency_code: req.body.currency || "USD",
-                products: [{ 
-                    product_id: "101", 
-                    sku: "SKU_101",
-                    name: "Yuanway Session", 
-                    price: orderAmount, 
-                    quantity: 1, 
-                    category: "system",
+                order_currency_code: "USD",
+                products: [{
+                    product_id: "101",
+                    name: "Test Product",
+                    price: orderAmount,
+                    quantity: 1,
                     url: "https://yuanway2030.com",
-                    shipping_provider: "other" 
+                    shipping_provider: "other"
                 }]
             },
             customer: {
                 customer_type: "I",
                 first_name: req.body.customer?.first_name || "Sami",
-                last_name: req.body.customer?.last_name || "Al-Rashidi",
-                full_name: req.body.customer?.full_name || "Sami Al-Rashidi",
+                last_name: req.body.customer?.last_name || "Alrashidi",
                 email: req.body.customer?.email || "yuanwayco@gmail.com",
                 phone: req.body.customer?.phone || "+966500000000"
             }
@@ -123,9 +121,9 @@ app.post('/api/get-iframe-token', (req, res) => {
                 try {
                     const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
                     const iframeToken = responseData.token || responseData.credential_token || responseData.order?.key;
-                    return res.json({ success: true, token: iframeToken, order_id: serverGeneratedOrderId });
+                    return res.json({ success: true, token: iframeToken, order_id: generatedOrderId });
                 } catch (e) {
-                    return res.status(500).json({ success: false, error: "فشل استخراج التوكن" });
+                    return res.status(500).json({ success: false, error: "فشل استخراج التوكن المبدئي" });
                 }
             },
             failcb: function (error) {
@@ -133,64 +131,66 @@ app.post('/api/get-iframe-token', (req, res) => {
             }
         });
     } catch (err) {
-        return res.status(500).json({ success: false, error: "خطأ داخلي" });
+        return res.status(500).json({ success: false, error: "خطأ داخلي بالسيرفر" });
     }
 });
 
-// 2. مسار السحب المالي (هنا فقط نحدد طريقة الدفع ونرسل التوكن)
+// 2. مسار معالجة الدفع النهائي الفعلي المطابق كلياً لهيكلية الشركة
 app.post('/api/process-payment', (req, res) => {
     try {
+        const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
         const orderAmount = Number(req.body.amount) || 10.00;
-        const targetOrderId = req.body.order_id || ("ORD_" + Date.now());
+        const targetOrderId = req.body.order_id || ("ORD_" + timeNow);
 
+        // الهيكلية الذهبية الرسمية المعتمدة من رد التقني لـ inter_credit_card
         const params = {
-            merchant_transaction_id: "PAY_" + targetOrderId,
+            merchant_transaction_id: "TXN_" + timeNow,
             merchant_id: MERCHANT_ID,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
+            redirect_url: "https://yuanway2030.com/payment-methods.html",
+            cancel_url: "https://yuanway2030.com/payment-methods.html",
             country: "US",
-            payment_method: "inter_credit_card", // 🔥 هنا مكانها الصحيح فقط
+            payment_method: "inter_credit_card", // القيمة المعتمدة رسمياً
             merchant_order: {
-                merchant_order_id: targetOrderId, 
+                merchant_order_id: targetOrderId,
                 merchant_order_time: timestamp,
                 order_amount: orderAmount,
-                order_currency_code: req.body.currency || "USD",
-                products: [{ 
-                    product_id: "101", 
-                    sku: "SKU_101", 
-                    name: "Yuanway Order", 
-                    price: orderAmount, 
-                    quantity: 1, 
-                    category: "E-commerce",
+                order_currency_code: "USD",
+                products: [{
+                    product_id: "101",
+                    name: "Test Product",
+                    price: orderAmount,
+                    quantity: 1,
                     url: "https://yuanway2030.com",
-                    shipping_provider: "other" 
+                    shipping_provider: "other"
                 }]
             },
             customer: {
                 customer_type: "I",
                 first_name: req.body.customer?.first_name || "Sami",
-                last_name: req.body.customer?.last_name || "Al-Rashidi",
-                full_name: req.body.customer?.full_name || "Sami Al-Rashidi",
+                last_name: req.body.customer?.last_name || "Alrashidi",
+                full_name: req.body.customer?.full_name || "Sami Alrashidi",
                 email: req.body.customer?.email || "yuanwayco@gmail.com"
             },
             payment_data: {
                 card: {
-                    card_token: req.body.card_token, 
-                    holder_name: req.body.holder_name || "Sami Al-Rashidi" 
+                    card_token: req.body.card_token,
+                    holder_name: req.body.holder_name || "Sami Alrashidi" // حقن اسم العميل من الخادم
                 },
                 installments: 1
             },
-            terminal_data: { 
+            terminal_data: {
                 user_order_ip: "127.0.0.1",
                 user_client_browser_accept_header: "*/*",
                 user_client_browser_color_depth: 24,
                 user_client_browser_java_enabled: false,
                 user_client_browser_js_enabled: true,
-                user_client_browser_language: "ar",
+                user_client_browser_language: "en-US",
                 user_client_browser_screen_height: 1080,
                 user_client_browser_screen_width: 1920,
-                user_client_browser_time_zone_offset: "180",
-                user_client_browser_user_agent: "Mozilla/5.0"
+                user_client_browser_time_zone_offset: "300",
+                user_client_browser_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             }
         };
 
@@ -201,19 +201,20 @@ app.post('/api/process-payment', (req, res) => {
                     const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
                     return res.json({ success: true, data: responseData });
                 } catch (e) {
-                    return res.status(500).json({ success: false, error: "فشل تحليل رد العملية" });
+                    return res.status(500).json({ success: false, error: "فشل استجابة التحليل النهائي" });
                 }
             },
             failcb: function (error) {
+                console.error("❌ خطأ الدفع من البوابة:", error);
                 return res.status(400).json({ success: false, error: String(error) });
             }
         });
     } catch (err) {
-        return res.status(500).json({ success: false, error: "خطأ فني في السيرفر" });
+        return res.status(500).json({ success: false, error: "خطأ برمجي داخلي" });
     }
 });
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 السيرفر يعمل ويستمع بكفاءة على المنفذ ${PORT}`);
+    console.log(`🚀 السيرفر يعمل بنجاح ويستمع للمنافذ على ${PORT}`);
 });
