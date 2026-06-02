@@ -19,7 +19,7 @@ app.use(express.json());
 process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط:', err));
 process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج:', reason));
 
-app.get('/', (req, res) => res.send("🚀 السيرفر يعمل بالنسخة النهائية الموحدة لأرقام الطلبات!"));
+app.get('/', (req, res) => res.send("🚀 السيرفر يعمل ومؤمن بالكامل بنظام توليد المعرفات الداخلي!"));
 
 const MERCHANT_ID = "202605290003945002";
 
@@ -75,23 +75,29 @@ try {
         merchant_id: MERCHANT_ID,
         is_print_log: true
     });
+    console.log("✅ تم تهيئة مكتبة LianLian بنجاح");
 } catch (initError) {
     console.error("🔥 خطأ في تهيئة المكتبة:", initError);
 }
 
-// 1. طلب توكن الإطار
+// 1. طلب توكن الإطار (توليد المعرفات داخلياً)
 app.post('/api/get-iframe-token', (req, res) => {
+    console.log("📥 [مرحلة 1] طلب توكن الإطار المدمج...");
     try {
+        const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
         const orderAmount = Number(req.body.amount) || 10.00;
+        
+        // 🔥 الحل الجذري: توليد الـ ID بصيغة نصية واضحة وصريحة داخل السيرفر لحماية الفحص
+        const serverGeneratedOrderId = "ORD_" + timeNow;
 
         const params = {
-            merchant_transaction_id: "TOK_" + req.body.order_id, // 🔥 الاعتماد على رقم الطلب الموحد
+            merchant_transaction_id: "TOK_" + serverGeneratedOrderId, 
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            payment_method: "inter_credit_card", // 🔥 تمت الإضافة لمنع خطأ front model invalid
+            payment_method: "inter_credit_card",
             merchant_order: {
-                merchant_order_id: req.body.order_id, // 🔥 الاعتماد على رقم الطلب الموحد
+                merchant_order_id: serverGeneratedOrderId, // حقل الـ ID المؤمن بالكامل
                 merchant_order_time: timestamp,
                 order_amount: orderAmount,
                 order_currency_code: req.body.currency || "USD",
@@ -121,12 +127,15 @@ app.post('/api/get-iframe-token', (req, res) => {
                 try {
                     const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
                     const iframeToken = responseData.token || responseData.credential_token || responseData.order?.key;
-                    return res.json({ success: true, token: iframeToken });
+                    
+                    // 🔥 نرسل الـ Token والـ orderId المتولد معاً للواجهة الأمامية لاستخدامه في الخصم لاحقاً
+                    return res.json({ success: true, token: iframeToken, order_id: serverGeneratedOrderId });
                 } catch (e) {
                     return res.status(500).json({ success: false, error: "فشل استخراج التوكن" });
                 }
             },
             failcb: function (error) {
+                console.error("❌ فشل استخراج التوكن من البوابة:", error);
                 return res.status(400).json({ success: false, error: String(error) });
             }
         });
@@ -137,12 +146,14 @@ app.post('/api/get-iframe-token', (req, res) => {
 
 // 2. طلب السحب المالي النهائي
 app.post('/api/process-payment', (req, res) => {
+    console.log("📥 [مرحلة 3] طلب سحب مالي نهائي...");
     try {
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
         const orderAmount = Number(req.body.amount) || 10.00;
+        const targetOrderId = req.body.order_id || ("ORD_BACK_" + Date.now());
 
         const params = {
-            merchant_transaction_id: "PAY_" + req.body.order_id,
+            merchant_transaction_id: "PAY_" + targetOrderId,
             merchant_id: MERCHANT_ID,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             redirect_url: "https://yuanway2030.com/payment-methods.html",
@@ -150,7 +161,7 @@ app.post('/api/process-payment', (req, res) => {
             country: "US",
             payment_method: "inter_credit_card", 
             merchant_order: {
-                merchant_order_id: req.body.order_id, // 🔥 يجب أن يكون متطابقاً تماماً مع المرحلة 1
+                merchant_order_id: targetOrderId, 
                 merchant_order_time: timestamp,
                 order_amount: orderAmount,
                 order_currency_code: req.body.currency || "USD",
@@ -173,7 +184,7 @@ app.post('/api/process-payment', (req, res) => {
             },
             payment_data: {
                 card: {
-                    card_token: req.body.card_token, // الآن سيتم قبوله لأنه مرتبط بنفس رقم الطلب
+                    card_token: req.body.card_token, 
                     holder_name: req.body.holder_name || "Sami Alrashidi" 
                 },
                 installments: 1
