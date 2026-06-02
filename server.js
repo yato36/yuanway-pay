@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors'); 
 const LLPaySdk = require('ga-payment-sdk');
 
-// تخطي عقبة التحقق في بيئة الاختبار لضمان نجاح العملية دائماً
+// 🛡️ تخطي عقبة التحقق في بيئة الاختبار لضمان نجاح العملية
 LLPaySdk.prototype.judgeVerSign = function(body, sign) {
     console.log("🛡️ [Sandbox Bypass] تم اعتماد التوقيع تلقائياً");
     return true;
@@ -25,7 +25,7 @@ app.use(express.json());
 process.on('uncaughtException', (err) => console.error('🔥 خطأ غير ملتقط:', err));
 process.on('unhandledRejection', (reason) => console.error('🔥 وعد غير معالج:', reason));
 
-app.get('/', (req, res) => res.send("🚀 السيرفر يعمل ومحمي بالكامل بنظام الإطار المزدوج!"));
+app.get('/', (req, res) => res.send("🚀 السيرفر يعمل ومحمي بالكامل!"));
 
 const MERCHANT_ID = "202605290003945002";
 
@@ -84,7 +84,7 @@ try {
 } catch (e) { console.error(e); }
 
 // ==========================================
-// 1. مسار توليد التوكن الخاص بالإطار (بدون payment_method)
+// 1. مسار جلب توكن الإطار
 // ==========================================
 app.post('/api/get-iframe-token', (req, res) => {
     try {
@@ -104,7 +104,7 @@ app.post('/api/get-iframe-token', (req, res) => {
                 products: [{ 
                     product_id: "101", 
                     sku: "SKU_101",
-                    name: "Yuanway Order Session", 
+                    name: "Yuanway Order", 
                     price: orderAmount, 
                     quantity: 1, 
                     category: "system",
@@ -114,11 +114,12 @@ app.post('/api/get-iframe-token', (req, res) => {
             },
             customer: {
                 customer_type: "I",
-                first_name: req.body.customer?.first_name || "Customer",
-                last_name: req.body.customer?.last_name || "User",
-                full_name: req.body.customer?.full_name || "Customer User",
+                // 🛑 إجبار البوابة على قراءة اسم إنجليزي لتجنب الانهيار الداخلي للغة
+                first_name: "Yuanway",
+                last_name: "Customer",
+                full_name: "Yuanway Customer",
                 email: req.body.customer?.email || "azz12345apo@gmail.com",
-                phone: req.body.customer?.phone || "0559392787"
+                phone: "0559392787"
             }
         };
 
@@ -127,15 +128,11 @@ app.post('/api/get-iframe-token', (req, res) => {
             successcb: function (result) {
                 try {
                     const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                    // البحث عن التوكن الخاص بالإطار
                     const iframeToken = responseData.token || responseData.credential_token || responseData.order?.key;
-                    if (iframeToken) {
-                        return res.json({ success: true, token: iframeToken, order_id: orderId });
-                    } else {
-                        return res.status(400).json({ success: false, error: "لم يتم العثور على توكن الإطار" });
-                    }
+                    if (iframeToken) return res.json({ success: true, token: iframeToken, order_id: orderId });
+                    return res.status(400).json({ success: false, error: "لم يتم العثور على توكن" });
                 } catch (e) {
-                    return res.status(500).json({ success: false, error: "خطأ في قراءة بيانات البنك" });
+                    return res.status(500).json({ success: false, error: "خطأ استخراج التوكن" });
                 }
             },
             failcb: function (error) {
@@ -143,12 +140,12 @@ app.post('/api/get-iframe-token', (req, res) => {
             }
         });
     } catch (err) {
-        return res.status(500).json({ success: false, error: "خطأ داخلي بالسيرفر" });
+        return res.status(500).json({ success: false, error: "خطأ داخلي" });
     }
 });
 
 // ==========================================
-// 2. مسار معالجة الدفع الفعلي وسحب المبلغ
+// 2. مسار معالجة وسحب الدفع الفعلي
 // ==========================================
 app.post('/api/process-payment', (req, res) => {
     try {
@@ -161,7 +158,7 @@ app.post('/api/process-payment', (req, res) => {
             merchant_id: MERCHANT_ID,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            payment_method: "inter_credit_card", // هنا نطلب سحب المبلغ عبر البطاقة
+            payment_method: "inter_credit_card", 
             merchant_order: {
                 merchant_order_id: targetOrderId, 
                 merchant_order_time: timestamp,
@@ -180,15 +177,15 @@ app.post('/api/process-payment', (req, res) => {
             },
             customer: {
                 customer_type: "I",
-                first_name: req.body.customer?.first_name || "Customer",
-                last_name: req.body.customer?.last_name || "User",
-                full_name: req.body.customer?.full_name || "Customer User",
+                first_name: "Yuanway",
+                last_name: "Customer",
+                full_name: "Yuanway Customer",
                 email: req.body.customer?.email || "azz12345apo@gmail.com"
             },
             payment_data: {
                 card: {
-                    card_token: req.body.card_token, // التوكن الذي ولده الإطار في الواجهة
-                    holder_name: req.body.holder_name || "Customer User" 
+                    card_token: req.body.card_token, 
+                    holder_name: "Yuanway Customer" 
                 },
                 installments: 1
             },
@@ -198,7 +195,7 @@ app.post('/api/process-payment', (req, res) => {
                 user_client_browser_color_depth: 24,
                 user_client_browser_java_enabled: false,
                 user_client_browser_js_enabled: true,
-                user_client_browser_language: "ar",
+                user_client_browser_language: "en-US",
                 user_client_browser_screen_height: 1080,
                 user_client_browser_screen_width: 1920,
                 user_client_browser_time_zone_offset: "180",
