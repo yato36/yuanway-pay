@@ -138,59 +138,41 @@ app.post('/api/get-iframe-token', (req, res) => {
 });
 
 // 2. مسار السحب المالي (هنا فقط نحدد طريقة الدفع ونرسل التوكن)
-app.post('/api/process-payment', (req, res) => {
+// 1. مسار جلب التوكن (تحديد نوع الدفع هنا إلزامي لتهيئة قواعد الإطار داخلياً)
+app.post('/api/get-iframe-token', (req, res) => {
     try {
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
         const orderAmount = Number(req.body.amount) || 10.00;
-        const targetOrderId = req.body.order_id || ("ORD_" + Date.now());
+        const serverGeneratedOrderId = "ORD_" + Date.now();
 
         const params = {
-            merchant_transaction_id: "PAY_" + targetOrderId,
-            merchant_id: MERCHANT_ID,
+            merchant_transaction_id: "TOK_" + serverGeneratedOrderId, 
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            payment_method: "inter_credit_card", // 🔥 هنا مكانها الصحيح فقط
+            payment_method: "inter_credit_card", // ✅ تم إعادتها هنا، لن تطلب رقم البطاقة بل ستهيئ الإطار فقط!
             merchant_order: {
-                merchant_order_id: targetOrderId, 
+                merchant_order_id: serverGeneratedOrderId, 
                 merchant_order_time: timestamp,
                 order_amount: orderAmount,
                 order_currency_code: req.body.currency || "USD",
                 products: [{ 
                     product_id: "101", 
-                    sku: "SKU_101", 
-                    name: "Yuanway Order", 
+                    sku: "SKU_101",
+                    name: "Yuanway Session", 
                     price: orderAmount, 
                     quantity: 1, 
-                    category: "E-commerce",
+                    category: "system",
                     url: "https://yuanway2030.com",
                     shipping_provider: "other" 
                 }]
             },
             customer: {
                 customer_type: "I",
-                first_name: req.body.customer?.first_name || "Sami",
-                last_name: req.body.customer?.last_name || "Al-Rashidi",
-                full_name: req.body.customer?.full_name || "Sami Al-Rashidi",
-                email: req.body.customer?.email || "yuanwayco@gmail.com"
-            },
-            payment_data: {
-                card: {
-                    card_token: req.body.card_token, 
-                    holder_name: req.body.holder_name || "Sami Al-Rashidi" 
-                },
-                installments: 1
-            },
-            terminal_data: { 
-                user_order_ip: "127.0.0.1",
-                user_client_browser_accept_header: "*/*",
-                user_client_browser_color_depth: 24,
-                user_client_browser_java_enabled: false,
-                user_client_browser_js_enabled: true,
-                user_client_browser_language: "ar",
-                user_client_browser_screen_height: 1080,
-                user_client_browser_screen_width: 1920,
-                user_client_browser_time_zone_offset: "180",
-                user_client_browser_user_agent: "Mozilla/5.0"
+                first_name: req.body.customer?.first_name || "Customer",
+                last_name: req.body.customer?.last_name || "User",
+                full_name: req.body.customer?.full_name || "Customer User",
+                email: req.body.customer?.email || "yuanwayco@gmail.com",
+                phone: req.body.customer?.phone || "+966500000000"
             }
         };
 
@@ -199,9 +181,10 @@ app.post('/api/process-payment', (req, res) => {
             successcb: function (result) {
                 try {
                     const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
-                    return res.json({ success: true, data: responseData });
+                    const iframeToken = responseData.token || responseData.credential_token || responseData.order?.key;
+                    return res.json({ success: true, token: iframeToken, order_id: serverGeneratedOrderId });
                 } catch (e) {
-                    return res.status(500).json({ success: false, error: "فشل تحليل رد العملية" });
+                    return res.status(500).json({ success: false, error: "فشل استخراج التوكن" });
                 }
             },
             failcb: function (error) {
@@ -209,7 +192,7 @@ app.post('/api/process-payment', (req, res) => {
             }
         });
     } catch (err) {
-        return res.status(500).json({ success: false, error: "خطأ فني في السيرفر" });
+        return res.status(500).json({ success: false, error: "خطأ داخلي" });
     }
 });
 
