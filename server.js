@@ -146,37 +146,70 @@ app.post('/api/get-iframe-token', (req, res) => {
 
 // 2. طلب السحب المالي النهائي
 // مسار الدفع النهائي المحدث بالكامل
-app.post('/api/process-payment', (req, res) => {
-    console.log("📥 [مرحلة 3] طلب سحب مالي نهائي بالهيكلة المطابقة تماماً لرد الشركة...");
+// استبدل مساراتك السابقة بهذا الكود الذي يطابق هيكلية الشركة بدقة
+app.post('/api/get-iframe-token', (req, res) => {
     try {
         const timeNow = Date.now();
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-        
-        // استخدام معرف طلب فريد وموحد
-        const orderId = "ORD_PAY_" + timeNow;
+        const orderId = "ORD_" + timeNow;
 
         const params = {
-            merchant_transaction_id: "TXN_" + timeNow,
-            merchant_id: MERCHANT_ID,
+            merchant_transaction_id: "TOK_" + timeNow,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-            redirect_url: "https://yuanway2030.com/payment-methods.html",
-            cancel_url: "https://yuanway2030.com/payment-methods.html",
             country: "US",
-            payment_method: "inter_credit_card", 
+            payment_method: "inter_credit_card",
             merchant_order: {
-                merchant_order_id: orderId, // 🔥 المعرف المطلوب من البوابة
+                merchant_order_id: orderId,
                 merchant_order_time: timestamp,
-                order_amount: req.body.amount || "10.00",
-                order_currency_code: req.body.currency || "USD",
-                order_description: "Yuan Way Final Order",
-                products: [{ 
-                    product_id: "101", 
-                    sku: "SKU_101", 
-                    name: "Yuanway Order", 
-                    price: req.body.amount || "10.00", 
-                    quantity: 1, 
+                order_amount: Number(req.body.amount),
+                order_currency_code: "USD",
+                products: [{
+                    product_id: "101",
+                    name: "Test Product",
+                    price: Number(req.body.amount),
+                    quantity: 1,
                     url: "https://yuanway2030.com",
-                    shipping_provider: "other" 
+                    shipping_provider: "other"
+                }]
+            },
+            customer: {
+                customer_type: "I",
+                first_name: req.body.customer?.first_name || "Sami",
+                last_name: req.body.customer?.last_name || "Alrashidi",
+                full_name: req.body.customer?.full_name || "Sami Alrashidi",
+                email: req.body.customer?.email || "yuanwayco@gmail.com"
+            }
+        };
+
+        LLPay.pay({
+            params: params,
+            successcb: (result) => {
+                const data = typeof result.body === 'string' ? JSON.parse(result.body) : result.body;
+                res.json({ success: true, token: data.token || data.credential_token, order_id: orderId });
+            },
+            failcb: (err) => res.status(400).json({ success: false, error: String(err) })
+        });
+    } catch (err) { res.status(500).json({ success: false, error: "Internal Error" }); }
+});
+
+app.post('/api/process-payment', (req, res) => {
+    try {
+        const params = {
+            merchant_transaction_id: "TXN_" + Date.now(),
+            country: "US",
+            payment_method: "inter_credit_card",
+            merchant_order: {
+                merchant_order_id: req.body.order_id,
+                merchant_order_time: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14),
+                order_amount: Number(req.body.amount),
+                order_currency_code: "USD",
+                products: [{
+                    product_id: "101",
+                    name: "Test Product",
+                    price: Number(req.body.amount),
+                    quantity: 1,
+                    url: "https://yuanway2030.com",
+                    shipping_provider: "other"
                 }]
             },
             customer: {
@@ -189,14 +222,14 @@ app.post('/api/process-payment', (req, res) => {
             payment_data: {
                 card: {
                     card_token: req.body.card_token,
-                    holder_name: req.body.holder_name || "Sami Alrashidi" 
+                    holder_name: req.body.holder_name
                 },
                 installments: 1
             },
-            terminal_data: { 
+            terminal_data: {
                 user_order_ip: "127.0.0.1",
                 user_client_browser_js_enabled: true,
-                user_client_browser_language: "ar",
+                user_client_browser_language: "en-US",
                 user_client_browser_user_agent: "Mozilla/5.0"
             }
         };
@@ -204,14 +237,9 @@ app.post('/api/process-payment', (req, res) => {
         LLPay.pay({
             params: params,
             successcb: (result) => res.json({ success: true, data: result.body }),
-            failcb: (error) => {
-                console.error("❌ رفض من البوابة:", error);
-                res.status(400).json({ success: false, error: String(error) });
-            }
+            failcb: (err) => res.status(400).json({ success: false, error: String(err) })
         });
-    } catch (err) {
-        res.status(500).json({ success: false, error: "خطأ داخلي" });
-    }
+    } catch (err) { res.status(500).json({ success: false, error: "Internal Error" }); }
 });
 
 const PORT = process.env.PORT || 8080;
