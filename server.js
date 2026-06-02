@@ -100,34 +100,66 @@ app.post('/api/get-iframe-token', (req, res) => {
         const currency   = req.body.currency   || "USD";
 
         // ✅ الفرق الجوهري: front_model = "iframe" يخبر الـ API أننا نريد iframe
+        // ✅ timestamp بنفس صيغة مثال SDK الرسمي: YYYYMMDDHHmmss
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const orderTimestamp = now.getFullYear()
+            + pad(now.getMonth() + 1)
+            + pad(now.getDate())
+            + pad(now.getHours())
+            + pad(now.getMinutes())
+            + pad(now.getSeconds());
+
         const params = {
-            merchant_transaction_id: "TXN_" + timeNow,
+            merchant_transaction_id: orderTimestamp + String(timeNow).slice(-4),
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
-            country: "US",
-            front_model: "iframe",        // ← هذا هو المفتاح
+            country:          "US",
+            front_model:      "iframe",
+            redirect_url:     "https://yuanway2030.com/payment-methods.html",
+            cancel_url:       "https://yuanway2030.com/payment-methods.html",
             merchant_order: {
-                merchant_order_id:   "ORD_" + timeNow,
-                merchant_order_time: timestamp,
+                merchant_order_id:   orderTimestamp.slice(0, 10),
+                merchant_order_time: orderTimestamp,
                 order_amount:        amount,
                 order_currency_code: currency,
                 order_description:   "Yuan Way Order",
                 products: [{
-                    product_id: "101",
-                    name:       "Yuanway Product",
-                    price:      amount,
-                    quantity:   1,
-                    category:   "general"
-                }]
+                    product_id:        "101",
+                    name:              "Yuanway Product",
+                    price:             amount,
+                    quantity:          "1",          // ✅ string وليس number
+                    sku:               "SKU_101",
+                    url:               "https://yuanway2030.com",
+                    shipping_provider: "other"
+                }],
+                shipping: {
+                    name:    payerName,
+                    phone:   payerPhone,
+                    cycle:   "48h",
+                    address: {
+                        line1:       "123 Main Street",
+                        city:        "Riyadh",
+                        state:       "Riyadh",
+                        country:     "SA",
+                        postal_code: "11564"
+                    }
+                }
             },
             customer: {
                 email: payerEmail
             },
             payer: {
-                payer_id:     "USER_" + timeNow,
+                payer_id:     "USER_" + String(timeNow).slice(-8),
                 payer_name:   payerName,
                 phone_number: payerPhone,
                 email:        payerEmail
-            }
+            },
+            terminal_data:     {},
+            payment_method:    null,
+            payment_data:      { installments: "1" },
+            subscription_data: null,
+            biz_code:          null,
+            additional_info:   null
         };
 
         LLPay.pay({
