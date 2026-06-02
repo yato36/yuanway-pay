@@ -124,6 +124,9 @@ app.post('/api/get-iframe-token', (req, res) => {
                 const ts  = makeTimestamp();
                 const tid = ts + String(Date.now()).slice(-4);
 
+                // ✅ merchant_order_id فريد: timestamp كامل + آخر 6 أرقام من milliseconds
+                const orderId = "ORD" + ts + String(Date.now()).slice(-6);
+
                 const payParams = {
                     merchant_transaction_id: tid,
                     notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
@@ -131,7 +134,7 @@ app.post('/api/get-iframe-token', (req, res) => {
                     cancel_url:       "https://yuanway2030.com/payment-methods.html",
                     country:          "US",
                     merchant_order: {
-                        merchant_order_id:   ts.slice(0, 10),
+                        merchant_order_id:   orderId,   // ✅ إصلاح: ID فريد دائماً
                         merchant_order_time: ts,
                         order_amount:        amount,
                         order_currency_code: currency,
@@ -166,8 +169,8 @@ app.post('/api/get-iframe-token', (req, res) => {
                         email:        payerEmail
                     },
                     terminal_data:     {},
-                    payment_method:    null,
-                    front_model:       null,
+                    payment_method:    "CARD",     // ✅ إصلاح: كان null
+                    front_model:       "iframe",   // ✅ إصلاح: كان null — سبب الخطأ الرئيسي
                     payment_data:      { installments: "1" },
                     subscription_data: null,
                     biz_code:          null,
