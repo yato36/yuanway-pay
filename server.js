@@ -147,10 +147,10 @@ app.post('/api/process-payment', (req, res) => {
             merchant_transaction_id: "TXN_" + timeNow,
             notification_url: "https://yuanway-pay-production.up.railway.app/api/webhook/lianlian",
             country: "US",
-            payment_method: "CARD",
+            payment_method: "card", // 🔥 التعديل هنا: أحرف صغيرة فقط!
             payment_data: {
                 card: {
-                    card_token: req.body.card_token // هذا هو الرمز الذي ستجلبه الواجهة الأمامية
+                    card_token: req.body.card_token // التوكن الذي جلبناه بنجاح من الواجهة
                 }
             },
             merchant_order: {
