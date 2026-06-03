@@ -95,11 +95,13 @@ app.post('/api/get-iframe-token', (req, res) => {
     const currency = req.body.currency || 'USD';
     const email    = req.body.email    || 'yuanwayco@gmail.com';
 
-    // ✅ هذه بالضبط params النسخة التي أرجعت order.key ناجحاً
+    // ✅ params كاملة تشمل payment_method الضروري لكي يشتغل SDK
+    const customerData = req.body.customer || {};
     const params = {
         merchant_transaction_id: 'TXN_' + timeNow,
         notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
         country: 'US',
+        payment_method: 'inter_credit_card',   // ✅ مطلوب لـ confirmPay() في الـ SDK
         merchant_order: {
             merchant_order_id:   'ORD_' + timeNow,
             merchant_order_time: ts,
@@ -111,14 +113,16 @@ app.post('/api/get-iframe-token', (req, res) => {
                 name:       'Yuanway Product',
                 price:      amount,
                 quantity:   1,
+                url:        'https://yuanway2030.com',
                 category:   'general'
             }]
         },
-        payer: {
-            payer_id:     'USER_' + timeNow,
-            payer_name:   'Yuanway Customer',
-            phone_number: '966500000000',
-            email:        email
+        customer: {                            // ✅ تغيير payer إلى customer كما في وثائق LianLian
+            customer_type: 'I',
+            first_name:    customerData.first_name || 'Customer',
+            last_name:     customerData.last_name  || 'User',
+            full_name:     customerData.full_name  || 'Customer User',
+            email:         customerData.email || email
         }
     };
 
