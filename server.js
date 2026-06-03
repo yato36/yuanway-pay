@@ -74,77 +74,57 @@ function generateSignature(merchantId, timestamp, bodyString) {
 // ─────────────────────────────────────────────────────────────
 // 🎯 المسار المحدث: جلب الـ token الصحيح للإطار (Elements)
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// 🎯 المسار المحدث: جلب الـ token الصحيح للإطار حسب التوثيق المرفق
+// ─────────────────────────────────────────────────────────────
 app.post('/api/get-iframe-token', async (req, res) => {
-    console.log('📥 get-iframe-token (Elements API) | amount:', req.body.amount);
+    console.log('📥 get-iframe-token (Iframe Token API)');
 
-    const timeNow  = Date.now();
-    const ts       = makeTs();
-    const amount   = req.body.amount   || '10.00';
-    const currency = req.body.currency || 'USD';
-    const customerData = req.body.customer || {};
+    // توليد الوقت بالصيغة المطلوبة في التوثيق yyyyMMddHHmmss
+    const ts = makeTs(); 
+    const timeNow = Date.now();
 
-    // بناء الـ Payload المطلوب للرابط الجديد /elements
+    // 1. بناء الـ Payload بالضبط كما هو مطلوب في الصورة
     const params = {
-        merchant_transaction_id: 'TXN_' + timeNow,
-        notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
-        country: 'US',
-        merchant_order: {
-            merchant_order_id:   'ORD_' + timeNow,
-            merchant_order_time: ts,
-            order_amount:        parseFloat(amount),
-            order_currency_code: currency,
-            order_description:   'Yuan Way Order',
-            products: [{
-                product_id:        '101',
-                sku:               'YW-001',
-                name:              'Yuanway Product',
-                price:             parseFloat(amount),
-                quantity:          1,
-                url:               'https://yuanway2030.com',
-                category:          'general',
-                shipping_provider: 'other'
-            }]
-        },
-        customer: {
-            customer_type: 'I',
-            first_name:    customerData.first_name || 'Customer',
-            last_name:     customerData.last_name  || 'User',
-            full_name:     customerData.full_name  || 'Customer User',
-            email:         customerData.email      || 'yuanwayco@gmail.com',
-            phone:         customerData.phone      || '+966500000000'
-        }
+        merchant_id: MERCHANT_ID,
+        sub_merchant_id: "1020241101710001", // ⚠️ هام: استبدل هذا الرقم برقم (Site ID/Sub Merchant) الخاص بك من لوحة تحكم LianLian
+        merchant_user_no: "user_" + timeNow  // معرّف مستخدم عشوائي أو حقيقي
     };
 
     try {
         const bodyString = JSON.stringify(params);
-        const timestamp = Math.floor(Date.now() / 1000).toString();
-        const signature = generateSignature(MERCHANT_ID, timestamp, bodyString);
-
-        // ✅ تم تحديث النطاق إلى النطاق الرسمي المعتمد لـ LianLian Global (Sandbox)
-        const lianlianUrl = `https://gapi-sandbox.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments/elements`;
         
-        // 💡 ملاحظة: عند الانتهاء من الاختبار والانتقال للوضع الحقيقي (Production) استخدم الرابط التالي:
-        // const lianlianUrl = `https://gapi.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments/elements`;
+        // 2. استخدام صيغة الوقت الجديدة في التوقيع
+        const signature = generateSignature(MERCHANT_ID, ts, bodyString);
+
+        // 3. النطاق التجريبي (Sandbox) المستخرج من التوثيق الخاص بك
+        const lianlianUrl = `https://celer-api.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/token`;
+        
+        // 💡 ملاحظة: رابط الإنتاج (Production) مستقبلاً سيكون:
+        // const lianlianUrl = `https://gpapi.lianlianpay.com/v3/merchants/${MERCHANT_ID}/token`;
 
         const response = await fetch(lianlianUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Signature': signature,
-                'Timestamp': timestamp
+                'signature': signature,
+                'timezone': 'Asia/Riyadh', // أو 'Asia/Hong_Kong' كما في التوثيق
+                'timestamp': ts            // إرسال الوقت بنفس الصيغة
             },
             body: bodyString
         });
 
         const result = await response.json();
-        console.log('LianLian Elements API Response:', result);
+        console.log('LianLian Token API Response:', result);
 
-        if (response.ok && result.token) {
-            console.log('🎯 Token Generated Successfully:', result.token);
-            return res.json({ success: true, token: result.token, order_id: result.merchant_transaction_id });
+        // 4. التحقق من النجاح (حسب الصورة، التوكن موجود في حقل اسمه order)
+        if (response.ok && result.return_code === 'SUCCESS' && result.order) {
+            console.log('🎯 Token Generated Successfully:', result.order);
+            // نرسل الـ token (الموجود في حقل order) إلى الواجهة الأمامية
+            return res.json({ success: true, token: result.order });
         } else {
             console.error('❌ LianLian Error:', result);
-            return res.status(400).json({ success: false, error: result.message || 'فشل جلب التوكن من LianLian' });
+            return res.status(400).json({ success: false, error: result.return_message || 'فشل جلب التوكن من LianLian' });
         }
 
     } catch (err) {
