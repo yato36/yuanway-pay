@@ -241,10 +241,79 @@ app.post('/api/process-payment', (req, res) => {
     });
 });
 
+// ─── Supabase REST helper ──────────────────────────────────
+const SUPABASE_URL = 'https://yuxwglmtycsakllhwoaj.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1eHdnbG10eWNzYWtsbGh3b2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDM4NTMsImV4cCI6MjA4NjMxOTg1M30.ynlf7dKK4JzwHH5YjtetqAyCbLuERxFZZ6g1kkTbYGk';
+
+/**
+ * يُحدّث حالة الطلب في Supabase بناءً على transaction_id من LianLian
+ * @param {string} txnId  - merchant_transaction_id أو order_id من LianLian
+ * @param {string} status - الحالة الجديدة بالعربي
+ */
+async function updateOrderStatusInSupabase(txnId, status) {
+    if (!txnId) return;
+    try {
+        const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/orders?transaction_id=eq.${encodeURIComponent(txnId)}`,
+            {
+                method: 'PATCH',
+                headers: {
+                    'apikey':        SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'Content-Type':  'application/json',
+                    'Prefer':        'return=minimal'
+                },
+                body: JSON.stringify({ status })
+            }
+        );
+        if (res.ok) {
+            console.log(`✅ Supabase: طلب ${txnId} → ${status}`);
+        } else {
+            const txt = await res.text();
+            console.error(`❌ Supabase update failed (${res.status}):`, txt);
+        }
+    } catch(e) {
+        console.error('❌ استثناء في updateOrderStatusInSupabase:', e);
+    }
+}
+
 // ─── Webhook ──────────────────────────────────────────────
-app.post('/api/webhook/lianlian', (req, res) => {
-    console.log('📨 webhook:', JSON.stringify(req.body).slice(0, 200));
+app.post('/api/webhook/lianlian', async (req, res) => {
+    const body = req.body;
+    console.log('📨 webhook received:', JSON.stringify(body).slice(0, 300));
+
+    // ✅ رد فوري لـ LianLian قبل المعالجة (مطلوب خلال 5 ثواني)
     res.json({ return_code: 'SUCCESS', return_message: 'OK' });
+
+    // ─── استخراج البيانات من payload اللياني ───────────────
+    // LianLian يُرسل merchant_transaction_id أو merchant_order_id
+    const txnId     = body.merchant_transaction_id || body.transaction_id || null;
+    const orderId   = body.merchant_order_id       || body.order_id       || null;
+    const rawStatus = body.order_status || body.status || body.transaction_status || '';
+
+    // ─── تحويل كود الحالة إلى عربي ──────────────────────────
+    // أكواد LianLian الشائعة: SU=Success, FA=Failed, OP=Processing, CA=Cancelled
+    const statusMap = {
+        'SU': 'قيد الانتظار',   // تم الدفع، ينتظر الشحن
+        'PA': 'قيد الانتظار',   // Paid
+        'success': 'قيد الانتظار',
+        'SUCCESS': 'قيد الانتظار',
+        'OP': 'قيد الانتظار',   // Order Processing
+        'FA': 'ملغي',
+        'FAILED': 'ملغي',
+        'CA': 'ملغي',
+        'CANCELLED': 'ملغي',
+        'RE': 'ملغي',           // Refunded
+    };
+
+    const newStatus = statusMap[rawStatus] || null;
+
+    if (newStatus && (txnId || orderId)) {
+        // حاول التحديث بـ txnId أولاً ثم orderId كـ fallback
+        await updateOrderStatusInSupabase(txnId || orderId, newStatus);
+    } else {
+        console.log(`ℹ️ webhook: حالة غير معروفة "${rawStatus}" أو لا يوجد معرف - تجاهل`);
+    }
 });
 
 const PORT = process.env.PORT || 8080;
