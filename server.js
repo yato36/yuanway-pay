@@ -137,46 +137,35 @@ function llHeaders(bodyString) {
 // يرجع { token: "..." } للاستخدام في LLP.elements().create('card', { token })
 // ══════════════════════════════════════════════════════
 app.post('/api/get-iframe-token', async (req, res) => {
-    const ts = makeTs();
-    const bodyObj = {
-        merchant_id:      '202605290003945002',
-        merchant_user_no: req.body.email || 'guest_' + Date.now(),
-        sub_merchant_id:  '1020260529853001'
-    };
+    // 1. البيانات الحقيقية
+    const MERCHANT_ID = '202605290003945002';
+    const SUB_MERCHANT_ID = '1020260529853001';
+    const TIMESTAMP = '20260603090000'; // يجب أن يكون بتنسيقهم yyyyMMddHHmmss
     
-    // التوقيع يتم باستخدام الكائن المرتب
-    const signature = sign(bodyObj, ts);
+    // 2. الـ Body كما طلبوه بالضبط
+    const rawBody = JSON.stringify({
+       "merchant_id": MERCHANT_ID,
+       "sub_merchant_id": SUB_MERCHANT_ID,
+       "merchant_user_no": req.body.email || 'user1234567890'
+    });
 
-    try {
-        
-        const url = `https://celer-api.LianLianpay-inc.com/v3/merchants/202605290003945002/token`;
-        const response = await fetch(url, {
-            method:  'POST',
-            headers: llHeaders(bodyStr),
-            body:    bodyStr
-        });
+    // 3. التوقيع (يجب أن تستخدم دالة sign الخاصة بك مع هذه المعطيات)
+    const signature = sign(rawBody, TIMESTAMP); // تأكد أن دالة sign تستخدم نفس الترتيب
 
-        const result = await response.json();
-        console.log('💬 /payments/elements response:', JSON.stringify(result));
+    // 4. الطلب
+    const response = await fetch(`https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/token`, {
+        method: 'POST',
+        headers: {
+            "signature": signature,
+            "timezone": "Asia/Hong_Kong",
+            "timestamp": TIMESTAMP,
+            "Content-Type": "application/json"
+        },
+        body: rawBody
+    });
 
-        // ✅ يرجع { token: "..." } حسب توثيق LianLian
-        const token = result?.token || result?.order || result?.data?.token;
-
-        if (token) {
-            console.log('🎯 iframe token:', token);
-            return res.json({ success: true, token });
-        }
-
-        console.error('❌ no token in response:', result);
-        return res.status(400).json({
-            success: false,
-            error: result?.return_message || result?.message || 'لم يُرجع الـ API token'
-        });
-
-    } catch(err) {
-        console.error('🔥 get-iframe-token error:', err);
-        return res.status(500).json({ success: false, error: 'خطأ داخلي' });
-    }
+    const result = await response.json();
+    res.json(result);
 });
 
 // ══════════════════════════════════════════════════════
