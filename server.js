@@ -1,5 +1,5 @@
-const express  = require('express');
-const crypto   = require('crypto');
+const express = require('express');
+const crypto  = require('crypto');
 
 const app = express();
 
@@ -19,12 +19,16 @@ app.use(express.json({
 process.on('uncaughtException',  err    => console.error('🔥', err));
 process.on('unhandledRejection', reason => console.error('🔥', reason));
 
-app.get('/', (req, res) => res.send('🚀 Server running'));
+app.get('/', (req, res) => res.send('🚀 Yuanway Server running'));
 
+// ══════════════════════════════════════════════════════
+// المفاتيح - مع إضافة ترويسات PEM الصحيحة (إلزامية لـ crypto)
+// ══════════════════════════════════════════════════════
 const MERCHANT_ID = '202605290003945002';
 
-// 👇👇👇 الصق المفتاح الخاص بالكامل هنا (مع ترويسة البداية والنهاية) 👇👇👇
-const PRIVATE_KEY_PEM = `MIIEogIBAAKCAQBj0PeaXtoumSrgkOTrhqf+D6EMy/glD/qoHoZYkjMkmT8skOca
+// ✅ مفتاحك الخاص - PKCS#1 RSA Private Key
+const PRIVATE_KEY_PEM = `-----BEGIN RSA PRIVATE KEY-----
+MIIEogIBAAKCAQBj0PeaXtoumSrgkOTrhqf+D6EMy/glD/qoHoZYkjMkmT8skOca
 cK1DdITUKmozwuuW71GUHHGUttiwUEV+Yq33Dtk30H2zoPd4PjGDM3j4hsUFTrpH
 oLuCqBC7KlxfUAOUaJFnT3M9TJeDnV27rtww3URoQmjheJqPubp3mhnIERMS/vIQ
 N3yBycMCtt9qdx9YYu5jqD3mSUHLw84WzN9MjO1B2HJuHdsYRPkzokMtFxCcaI/1
@@ -48,198 +52,33 @@ rmCMZ8Lsc9b6sHt3fRfgWpHWxnWP3AmqyggIyDb6RaZJ9QFItpW1jAbfgqfQhlf8
 iZpETleIPBK5hMXl8fbKs21CpheMspI54bk5rsj7XiMLnOQsrj9QUgSPMfMQJGWe
 aViBAoGAKHkY2VwDBR7LGOa7Qp+iGMqkdTMwoQ+QfK4wJ2Uy8XQtfWvngceUcXwy
 6x8Sle8V/8tTxhwjZCP4WlmP1ASh1ee58oMQhKqudEF2HOQssufgFsrfmF5MeGr3
-8xGpHTb68w2OFOxFEKyaXc9ADMWO+sMHTW4n0eMuXgisv4SQRDI=`;
-// 👆👆👆 👆👆👆
+8xGpHTb68w2OFOxFEKyaXc9ADMWO+sMHTW4n0eMuXgisv4SQRDI=
+-----END RSA PRIVATE KEY-----`;
 
-// مفتاح LianLian العام (قمت بتجهيزه لك لتأمين الـ Webhook)
-const LL_PUBLIC_KEY_PEM = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7
+// ✅ مفتاح LianLian العام للتحقق من الـ Webhook
+const LL_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7
 ihx5ENfsq9Ta+O6YjkzfGEMjoIJCaphJ9DPFipHZU5Xb1C2SUL81kady+xMbE2/s
 bWPN9roMhfcOWJ2ripNE1zhk9+8HbhxVOTcnbr7qZLNfcBv0ppim+R5p9kTCMzww
 M9XR2YnvGo99MaBiFJA19jwGfof/pJGXQlo4ZHmbKGiMnTh1chvQAC7+/au7cMDJ
 93teHhlc2sl2eWnmJoSWGHZo7ja4LL6ybziWve+1miAW/2QDUSm6secOgW55wpr9
 B7w56dftvryYPRU+qjlwMPXfVWGOnikef83XRSdAbES2nUheasIHHy4wIWzp1Y8+
-DQIDAQAB`;
+DQIDAQAB
+-----END PUBLIC KEY-----`;
 
-
-function makeTs() {
-    const n = new Date();
-    const p = x => String(x).padStart(2,'0');
-    return `${n.getUTCFullYear()}${p(n.getUTCMonth()+1)}${p(n.getUTCDate())}${p(n.getUTCHours())}${p(n.getUTCMinutes())}${p(n.getUTCSeconds())}`;
-}
-
-function generateSignature(merchantId, timestamp, bodyString) {
-    const dataToSign = `${merchantId}&${timestamp}&${bodyString}`;
-    const sign = crypto.createSign('RSA-SHA256');
-    sign.update(dataToSign);
-    return sign.sign(PRIVATE_KEY_PEM, 'base64');
-}
-
-function verifyLianLianSignature(merchantId, timestamp, bodyString, incomingSignature) {
-    try {
-        const dataToVerify = `${merchantId}&${timestamp}&${bodyString}`;
-        const verify = crypto.createVerify('RSA-SHA256');
-        verify.update(dataToVerify);
-        return verify.verify(LL_PUBLIC_KEY_PEM, incomingSignature, 'base64');
-    } catch (err) {
-        console.error('❌ Error during signature verification:', err);
-        return false;
-    }
-}
-
-// ─────────────────────────────────────────────────────────────
-// 🎯 الخطوة 1: جلب توكن الـ Iframe
-// ─────────────────────────────────────────────────────────────
-app.post('/api/get-iframe-token', async (req, res) => {
-    console.log('📥 get-iframe-token | Request received');
-
-    const customerData = req.body.customer || {};
-    const merchantUserNo = customerData.email || 'guest_' + Date.now(); 
-
-    const params = {
-        merchant_id: MERCHANT_ID,
-        merchant_user_no: merchantUserNo
-    };
-
-    try {
-        const bodyString = JSON.stringify(params);
-        const timestamp = makeTs(); 
-        const signature = generateSignature(MERCHANT_ID, timestamp, bodyString);
-
-        const lianlianUrl = `https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/token`;
-
-        const response = await fetch(lianlianUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Signature': signature,
-                'Timestamp': timestamp,
-                'Timezone': 'UTC'
-            },
-            body: bodyString
-        });
-
-        const result = await response.json();
-        console.log('LianLian Token API Response:', result);
-
-        if (response.ok && (result.order || result.token || result.data?.token)) {
-            const validToken = result.order || result.token || result.data?.token;
-            console.log('🎯 Iframe Token Generated Successfully:', validToken);
-            return res.json({ success: true, token: validToken });
-        } else {
-            console.error('❌ LianLian Error:', result);
-            return res.status(400).json({ success: false, error: result.message || result.return_message || 'فشل جلب التوكن من LianLian' });
-        }
-
-    } catch (err) {
-        console.error('🔥 Server Exception:', err);
-        return res.status(500).json({ success: false, error: 'حدث خطأ داخلي في السيرفر' });
-    }
-});
-
-// ─────────────────────────────────────────────────────────────
-// 🎯 الخطوة 2: التنفيذ الفعلي للدفع
-// ─────────────────────────────────────────────────────────────
-app.post('/api/execute-payment', async (req, res) => {
-    console.log('📥 execute-payment | Processing final payment');
-
-    const { amount, currency, customer, card_token, holder_name } = req.body;
-    
-    if (!card_token) {
-        return res.status(400).json({ success: false, error: 'رمز البطاقة (card_token) مفقود' });
-    }
-
-    const timeNow  = Date.now();
-    const finalAmount = amount || '10.00';
-    const finalCurrency = currency || 'USD';
-
-    const params = {
-        merchant_transaction_id: 'TXN_' + timeNow,
-        merchant_id: MERCHANT_ID,
-        payment_method: 'inter_credit_card', 
-        notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
-        country: 'SA',
-        merchant_order: {
-            merchant_order_id:   'ORD_' + timeNow,
-            merchant_order_time: makeTs(), 
-            order_amount:        parseFloat(finalAmount),
-            order_currency_code: finalCurrency,
-            order_description:   'Yuan Way Order',
-            products: [{
-                product_id:        '101',
-                sku:               'YW-001',
-                name:              'Yuanway Product',
-                price:             parseFloat(finalAmount),
-                quantity:          1,
-                url:               'https://yuanway2030.com',
-                category:          'general',
-                shipping_provider: 'other'
-            }]
-        },
-        customer: {
-            customer_type: 'I',
-            first_name:    customer?.first_name || 'Customer',
-            last_name:     customer?.last_name  || 'User',
-            full_name:     customer?.full_name  || 'Customer User',
-            email:         customer?.email      || 'yuanwayco@gmail.com',
-            phone:         customer?.phone      || '+966500000000'
-        },
-        payment_data: {
-            card: {
-                card_token: card_token,
-                holder_name: holder_name || customer?.full_name || 'Customer User'
-            }
-        }
-    };
-
-    try {
-        const bodyString = JSON.stringify(params);
-        const timestamp = makeTs(); 
-        const signature = generateSignature(MERCHANT_ID, timestamp, bodyString);
-
-        const lianlianUrl = `https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments`;
-
-        const response = await fetch(lianlianUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Signature': signature,
-                'Timestamp': timestamp,
-                'Timezone': 'UTC'
-            },
-            body: bodyString
-        });
-
-        const result = await response.json();
-        console.log('LianLian Payment API Response:', result);
-
-        if (response.ok && (result.return_code === 'SUCCESS' || result.status === 'SUCCESS' || result.status === 'PA')) {
-            console.log('✅ Payment Executed Successfully:', result.merchant_transaction_id);
-            return res.json({ success: true, data: result });
-        } else {
-            console.error('❌ Payment Execution Error:', result);
-            return res.status(400).json({ success: false, error: result.message || result.return_message || 'تم رفض العملية من البنك' });
-        }
-
-    } catch (err) {
-        console.error('🔥 Server Exception during payment execution:', err);
-        return res.status(500).json({ success: false, error: 'حدث خطأ داخلي أثناء معالجة الدفع' });
-    }
-});
-
-
-// ─── Supabase REST helper ──────────────────────────────────
+// ── Supabase ──────────────────────────────────────────────
 const SUPABASE_URL = 'https://yuxwglmtycsakllhwoaj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1eHdnbG10eWNzYWtsbGh3b2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDM4NTMsImV4cCI6MjA4NjMxOTg1M30.ynlf7dKK4JzwHH5YjtetqAyCbLuERxFZZ6g1kkTbYGk';
 
-async function updateOrderStatusInSupabase(txnId, status) {
-    if (!txnId) return;
+async function updateOrderStatus(orderId, status) {
+    if (!orderId) return;
     try {
-        const res = await fetch(
-            `${SUPABASE_URL}/rest/v1/orders?transaction_id=eq.${encodeURIComponent(txnId)}`,
+        const r = await fetch(
+            `${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`,
             {
                 method: 'PATCH',
                 headers: {
-                    'apikey':        SUPABASE_KEY, 
+                    'apikey':        SUPABASE_KEY,
                     'Authorization': `Bearer ${SUPABASE_KEY}`,
                     'Content-Type':  'application/json',
                     'Prefer':        'return=minimal'
@@ -247,38 +86,223 @@ async function updateOrderStatusInSupabase(txnId, status) {
                 body: JSON.stringify({ status })
             }
         );
-        if (res.ok) console.log(`✅ Supabase: طلب ${txnId} → ${status}`);
-    } catch(e) { console.error('❌ استثناء في تحديث Supabase:', e); }
+        console.log(`✅ Supabase update order ${orderId} → ${status} | HTTP ${r.status}`);
+    } catch(e) { console.error('❌ Supabase update failed:', e); }
 }
 
-// ─── Webhook (محصّن بالكامل بالتوقيع الرقمي) ───────────────
-app.post('/api/webhook/lianlian', async (req, res) => {
-    const incomingSignature = req.headers['signature'];
-    const incomingTimestamp = req.headers['timestamp'];
-    const body = req.body;
+// ── signature helpers ────────────────────────────────────
+function makeTs() {
+    const n = new Date(), p = x => String(x).padStart(2,'0');
+    return `${n.getUTCFullYear()}${p(n.getUTCMonth()+1)}${p(n.getUTCDate())}${p(n.getUTCHours())}${p(n.getUTCMinutes())}${p(n.getUTCSeconds())}`;
+}
 
-    if (incomingSignature && incomingTimestamp) {
-        const isValid = verifyLianLianSignature(MERCHANT_ID, incomingTimestamp, req.rawBody || JSON.stringify(body), incomingSignature);
-        if (!isValid) {
-            console.error('⚠️ Webhook Warning: Invalid signature detected! Request rejected.');
+function sign(bodyString, timestamp) {
+    const data = `${MERCHANT_ID}&${timestamp}&${bodyString}`;
+    return crypto.createSign('RSA-SHA256').update(data).sign(PRIVATE_KEY_PEM, 'base64');
+}
+
+function verify(bodyString, timestamp, incomingSig) {
+    try {
+        const data = `${MERCHANT_ID}&${timestamp}&${bodyString}`;
+        return crypto.createVerify('RSA-SHA256').update(data).verify(LL_PUBLIC_KEY_PEM, incomingSig, 'base64');
+    } catch(e) { return false; }
+}
+
+function llHeaders(bodyString) {
+    const ts = makeTs();
+    return {
+        'Content-Type':  'application/json',
+        'sign-type':     'RSA',
+        'signature':     sign(bodyString, ts),
+        'timestamp':     ts,
+        'timezone':      'UTC'
+    };
+}
+
+// ══════════════════════════════════════════════════════
+// ✅ المسار 1: جلب iframe token
+// LianLian Support: استخدم POST /payments/elements
+// يرجع { token: "..." } للاستخدام في LLP.elements().create('card', { token })
+// ══════════════════════════════════════════════════════
+app.post('/api/get-iframe-token', async (req, res) => {
+    console.log('📥 get-iframe-token');
+
+    const body = {
+        merchant_id:      MERCHANT_ID,
+        merchant_user_no: req.body.email || 'guest_' + Date.now()
+    };
+    const bodyStr = JSON.stringify(body);
+
+    try {
+        // ✅ الـ endpoint الصحيح حسب LianLian Support
+        const url = `https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments/elements`;
+        const response = await fetch(url, {
+            method:  'POST',
+            headers: llHeaders(bodyStr),
+            body:    bodyStr
+        });
+
+        const result = await response.json();
+        console.log('💬 /payments/elements response:', JSON.stringify(result));
+
+        // ✅ يرجع { token: "..." } حسب توثيق LianLian
+        const token = result?.token || result?.order || result?.data?.token;
+
+        if (token) {
+            console.log('🎯 iframe token:', token);
+            return res.json({ success: true, token });
+        }
+
+        console.error('❌ no token in response:', result);
+        return res.status(400).json({
+            success: false,
+            error: result?.return_message || result?.message || 'لم يُرجع الـ API token'
+        });
+
+    } catch(err) {
+        console.error('🔥 get-iframe-token error:', err);
+        return res.status(500).json({ success: false, error: 'خطأ داخلي' });
+    }
+});
+
+// ══════════════════════════════════════════════════════
+// ✅ المسار 2: تنفيذ الدفع بعد الحصول على card_token من الـ SDK
+// البنية الدقيقة حسب LianLian Support
+// ══════════════════════════════════════════════════════
+app.post('/api/execute-payment', async (req, res) => {
+    console.log('📥 execute-payment');
+    const { card_token, holder_name, amount, currency, email, order_id } = req.body;
+
+    if (!card_token) {
+        return res.status(400).json({ success: false, error: 'card_token مفقود' });
+    }
+
+    const timeNow = Date.now();
+    const ts      = makeTs();
+    const amt     = parseFloat(amount) || 200.10;
+
+    const userIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+                || req.socket?.remoteAddress || '127.0.0.1';
+
+    const body = {
+        merchant_transaction_id: 'TXN_' + timeNow,
+        notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
+        redirect_url:     'https://yuanway2030.com/payment-methods.html',
+        cancel_url:       'https://yuanway2030.com/payment-methods.html',
+        country:          'US',
+        payment_method:   'inter_credit_card',
+        merchant_order: {
+            merchant_order_id:   'ORD_' + timeNow,
+            merchant_order_time: ts,
+            order_amount:        amt,
+            order_currency_code: currency || 'USD',
+            order_description:   'Yuan Way Order',
+            products: [{
+                product_id:        '101',
+                name:              'Yuanway Product',
+                price:             amt,
+                quantity:          1,
+                url:               'https://yuanway2030.com',
+                shipping_provider: 'other'
+            }]
+        },
+        customer: {
+            customer_type: 'I',
+            first_name:    'Yuanway',
+            last_name:     'Customer',
+            full_name:     holder_name || 'Yuanway Customer',
+            email:         email || 'yuanwayco@gmail.com'
+        },
+        payment_data: {
+            card: {
+                card_token:  card_token,
+                holder_name: holder_name || 'Yuanway Customer'
+            },
+            installments: 1
+        },
+        terminal_data: {
+            user_order_ip:                        userIp,
+            user_client_browser_accept_header:    '*/*',
+            user_client_browser_color_depth:      24,
+            user_client_browser_java_enabled:     false,
+            user_client_browser_js_enabled:       true,
+            user_client_browser_language:         'en-US',
+            user_client_browser_screen_height:    1080,
+            user_client_browser_screen_width:     1920,
+            user_client_browser_time_zone_offset: '180',
+            user_client_browser_user_agent:       'Mozilla/5.0 (compatible)'
+        }
+    };
+
+    const bodyStr = JSON.stringify(body);
+
+    try {
+        const url = `https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments`;
+        const response = await fetch(url, {
+            method:  'POST',
+            headers: llHeaders(bodyStr),
+            body:    bodyStr
+        });
+
+        const result = await response.json();
+        console.log('💬 /payments response:', JSON.stringify(result).slice(0, 300));
+
+        const success = result?.return_code === 'SUCCESS'
+                     || result?.order_status === 'PA'
+                     || result?.order_status === 'SU';
+
+        if (success) {
+            console.log('✅ Payment executed successfully');
+            // ✅ تحديث حالة الطلب في Supabase مباشرة (بدون انتظار Webhook)
+            if (order_id) {
+                await updateOrderStatus(order_id, 'مدفوع');
+            }
+            return res.json({ success: true, data: result });
+        }
+
+        console.error('❌ Payment failed:', result);
+        return res.status(400).json({
+            success: false,
+            error: result?.return_message || result?.message || 'رُفضت العملية'
+        });
+
+    } catch(err) {
+        console.error('🔥 execute-payment error:', err);
+        return res.status(500).json({ success: false, error: 'خطأ داخلي' });
+    }
+});
+
+// ══════════════════════════════════════════════════════
+// Webhook - يستقبل تحديثات LianLian ويحدث Supabase
+// ══════════════════════════════════════════════════════
+app.post('/api/webhook/lianlian', async (req, res) => {
+    const sig = req.headers['signature'];
+    const ts  = req.headers['timestamp'];
+
+    if (sig && ts) {
+        const raw = req.rawBody || JSON.stringify(req.body);
+        if (!verify(raw, ts, sig)) {
+            console.error('⚠️ Webhook: invalid signature');
             return res.status(401).json({ return_code: 'FAIL', return_message: 'Invalid Signature' });
         }
     }
 
+    // أجب فوراً قبل المعالجة
     res.json({ return_code: 'SUCCESS', return_message: 'OK' });
 
-    const txnId     = body.merchant_transaction_id || body.transaction_id || null;
-    const orderId   = body.merchant_order_id       || body.order_id       || null;
-    const rawStatus = body.order_status || body.status || body.transaction_status || '';
+    const body      = req.body;
+    const rawStatus = body.order_status || body.status || '';
+    const orderId   = body.merchant_order_id || body.order_id || null;
 
     const statusMap = {
-        'SU': 'قيد الانتظار', 'PA': 'قيد الانتظار', 'success': 'قيد الانتظار', 'SUCCESS': 'قيد الانتظار', 'OP': 'قيد الانتظار',
-        'FA': 'ملغي', 'FAILED': 'ملغي', 'CA': 'ملغي', 'CANCELLED': 'ملغي', 'RE': 'ملغي'
+        'SU': 'مدفوع', 'PA': 'مدفوع', 'SUCCESS': 'مدفوع',
+        'FA': 'ملغي',  'CA': 'ملغي',  'FAILED':  'ملغي', 'RE': 'ملغي'
     };
 
     const newStatus = statusMap[rawStatus];
-    if (newStatus && (txnId || orderId)) {
-        await updateOrderStatusInSupabase(txnId || orderId, newStatus);
+    if (newStatus && orderId) {
+        console.log(`📨 Webhook: order ${orderId} → ${newStatus}`);
+        await updateOrderStatus(orderId, newStatus);
     }
 });
 
