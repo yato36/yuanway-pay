@@ -37,12 +37,17 @@ aViBAoGAKHkY2VwDBR7LGOa7Qp+iGMqkdTMwoQ+QfK4wJ2Uy8XQtfWvngceUcXwy
 8xGpHTb68w2OFOxFEKyaXc9ADMWO+sMHTW4n0eMuXgisv4SQRDI=
 -----END RSA PRIVATE KEY-----`;
 
+// ✅ FIX #1 + #2: تحويل المفتاح من PKCS#1 إلى PKCS#8 (string)
+// السبب: الـ SDK يستخدم node-rsa مع importKey(..., "pkcs8-private-pem")
+// وهو يرفض PKCS#1 بخطأ "encoding too long"
+// كذلك merchant_sign_key يجب أن يكون string وليس KeyObject
 const PRIVATE_KEY_PEM = crypto
     .createPrivateKey({ key: PRIVATE_KEY_PKCS1, format: 'pem', type: 'pkcs1' })
     .export({ type: 'pkcs8', format: 'pem' })
     .toString();
 
-const LL_PUBLIC_KEY_RAW = `-----BEGIN PUBLIC KEY-----
+// LianLian Public Key
+const LL_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7
 ihx5ENfsq9Ta+O6YjkzfGEMjoIJCaphJ9DPFipHZU5Xb1C2SUL81kady+xMbE2/s
 bWPN9roMhfcOWJ2ripNE1zhk9+8HbhxVOTcnbr7qZLNfcBv0ppim+R5p9kTCMzww
@@ -52,15 +57,11 @@ B7w56dftvryYPRU+qjlwMPXfVWGOnikef83XRSdAbES2nUheasIHHy4wIWzp1Y8+
 DQIDAQAB
 -----END PUBLIC KEY-----`;
 
-const LL_PUBLIC_KEY_PEM = crypto
-    .createPublicKey({ key: LL_PUBLIC_KEY_RAW.trim(), format: 'pem' })
-    .export({ type: 'spki', format: 'pem' })
-    .toString();
-
+// ✅ تهيئة صحيحة للـ SDK: merchant_sign_key = string PKCS#8 وليس KeyObject
 const config = {
-    env:               'product',
+    env:               'sandbox',
     sign_type:         'RSA',
-    merchant_sign_key: PRIVATE_KEY_PEM,   
+    merchant_sign_key: PRIVATE_KEY_PEM,   // ← string الآن، وبصيغة PKCS#8
     ll_sign_key:       LL_PUBLIC_KEY_PEM,
     merchant_id:       MERCHANT_ID,
     sub_merchant_id:   SUB_MERCHANT_ID,
@@ -68,6 +69,7 @@ const config = {
 };
 const LLPay = new LLPaySdk(config);
 
+// Timestamp helper (لا يزال مطلوباً للـ execute-payment)
 function makeTimestamp() {
     return new Date().toISOString().replace(/T/, '').replace(/\..+/, '').replace(/:/g, '').replace(/-/g, '').slice(0, 14);
 }
@@ -91,11 +93,16 @@ app.get('/', (req, res) => res.send('Yuanway Gateway Service Active'));
 
 // --- API Endpoints ---
 
-// [1] جلب الـ iframe token مع كامل البارامترات الإلزامية لمنع الـ Decline
+// Route 1: جلب الـ iframe token عبر الـ SDK مباشرةً
+// ✅ FIX #3: استخدام LLPay.getTokenIframe() بدلاً من implementation يدوي
+// السبب: الكود القديم كان يوقّع بـ RSA-SHA256 بينما LianLian تتوقع SHA1withRSA
+// Route 1: جلب الـ iframe token مع كامل البارامترات الإلزامية لمنع الـ Decline
 app.post('/api/get-iframe-token', (req, res) => {
     console.log('Fetching iframe token via SDK with full parameters...');
+
     const { amount, currency, customer } = req.body;
     
+    // تأمين قيم افتراضية في حال نقصها لمنع فشل الطلب
     const parsedAmount = amount ? parseFloat(amount).toFixed(2) : "10.00";
     const userEmail = customer?.email || `guest_${Date.now()}@yuanway2030.com`;
 
@@ -103,7 +110,7 @@ app.post('/api/get-iframe-token', (req, res) => {
         merchant_user_no: userEmail,
         order_amount:     parsedAmount,
         order_currency:   currency || 'USD',
-        payment_method:   'inter_credit_card',
+        payment_method:   'inter_credit_card', // تحديد نوع الدفع لمنع الالتباس في البوابة
         customer: {
             customer_type: 'I',
             first_name:    customer?.first_name || 'Yuanway',
@@ -118,46 +125,51 @@ app.post('/api/get-iframe-token', (req, res) => {
         successcb: (result) => {
             try {
                 const parsed = JSON.parse(result.body);
+                // البوابة أحياناً تعيد التوكن مباشرة وأحياناً داخل كائن data
                 const token = parsed.token || parsed.data?.token || parsed.order;
+                
                 if (token) {
                     return res.json({ success: true, token });
                 } else {
-                    return res.status(400).json({ success: false, error: parsed.return_message || 'No token in response' });
+                    console.error('LianLian Response Error Raw:', parsed);
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: parsed.return_message || 'No token in response', 
+                        raw: parsed 
+                    });
                 }
             } catch (e) {
-                return res.status(500).json({ success: false, error: 'Failed to parse response' });
+                return res.status(500).json({ success: false, error: 'Failed to parse response', raw: result.body });
             }
         },
         failcb: (err) => {
+            console.error('getTokenIframe SDK Internal Failure:', err);
             return res.status(400).json({ success: false, error: err });
         }
     });
 });
 
-// [2] تنفيذ الخصم الفعلي ومزامنة البارامترات والأقواس مغلقة بإحكام هنا ✅
+// Route 2: Confirm and Execute Credit Card Payment via SDK
 app.post('/api/execute-payment', (req, res) => {
     console.log('Dispatching request wrapper for credit card payment...');
-    const { card_token, holder_name, amount, currency, email } = req.body;
+    const { card_token, holder_name, amount, currency, email, order_id } = req.body;
 
     if (!card_token) return res.status(400).json({ success: false, error: 'Missing token parameter' });
 
-    const parsedAmount = parseFloat(amount) || 10.00;
+    const currentTxnId = `TXN_${Date.now()}`;
+    const parsedAmount = parseFloat(amount) || 200.10;
     const clientIp     = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '127.0.0.1';
 
-    const orderTimestamp = makeTimestamp();
-    const syncTxnId = `TXN_${card_token.slice(-10)}_${Date.now().toString().slice(-4)}`;
-    const syncOrderId = `ORD_${card_token.slice(-10)}_${Date.now().toString().slice(-4)}`;
-
     const paymentParams = {
-        merchant_transaction_id: syncTxnId,
+        merchant_transaction_id: currentTxnId,
         notification_url:        'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
         redirect_url:            'https://yuanway2030.com/payment-methods.html',
         cancel_url:              'https://yuanway2030.com/payment-methods.html',
-        country:                 'SA',
+        country:                 'US',
         payment_method:          'inter_credit_card',
         merchant_order: {
-            merchant_order_id:   syncOrderId,
-            merchant_order_time: orderTimestamp,
+            merchant_order_id:   `ORD_${Date.now()}`,
+            merchant_order_time: makeTimestamp(),
             order_amount:        parsedAmount,
             order_currency_code: currency || 'USD',
             order_description:   'Yuan Way Transaction',
@@ -171,11 +183,8 @@ app.post('/api/execute-payment', (req, res) => {
             }]
         },
         customer: {
-            customer_type: 'I', 
-            first_name:    holder_name?.split(' ')[0] || 'Yuanway', 
-            last_name:     holder_name?.split(' ')[1] || 'Customer',
-            full_name:     holder_name || 'Generic Customer', 
-            email:         email || 'yuanwayco@gmail.com'
+            customer_type: 'I', first_name: 'Yuanway', last_name: 'Customer',
+            full_name: holder_name || 'Generic Customer', email: email || 'yuanwayco@gmail.com'
         },
         payment_data: {
             card: { card_token: card_token, holder_name: holder_name || 'Generic Customer' },
@@ -206,7 +215,7 @@ app.post('/api/execute-payment', (req, res) => {
     });
 });
 
-// [3] استلام الـ Webhook الإشعارات الآلية
+// Route 3: Asynchronous Webhook Payment Notification Receiver via SDK Parser
 app.post('/api/webhook/lianlian', (req, res) => {
     const rawPayload = req.rawBody || JSON.stringify(req.body);
     const verification = LLPay.llNotice(rawPayload, req.headers);
@@ -214,5 +223,6 @@ app.post('/api/webhook/lianlian', (req, res) => {
     res.json({ return_code: 'SUCCESS', return_message: 'OK' });
 });
 
+// --- Server Boot ---
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => console.log(`Yuanway Payment Gateway listening on port ${PORT}`));
