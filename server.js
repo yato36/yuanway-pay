@@ -1,5 +1,5 @@
 const express  = require('express');
-const crypto   = require('crypto'); // مدمج في Node.js لعمل التوقيع
+const crypto   = require('crypto');
 
 const app = express();
 
@@ -61,7 +61,7 @@ function makeTs() {
     return `${n.getUTCFullYear()}${p(n.getUTCMonth()+1)}${p(n.getUTCDate())}${p(n.getUTCHours())}${p(n.getUTCMinutes())}${p(n.getUTCSeconds())}`;
 }
 
-// دالة لتوليد التوقيع الرقمي المطلوب من LianLian Pay
+// دالة لتوليد التوقيع الرقمي
 function generateSignature(merchantId, timestamp, bodyString) {
     const dataToSign = `${merchantId}&${timestamp}&${bodyString}`;
     const sign = crypto.createSign('RSA-SHA256');
@@ -70,16 +70,14 @@ function generateSignature(merchantId, timestamp, bodyString) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 🎯 الخطوة 1: جلب توكن الـ Iframe المبسط من /token
+// 🎯 الخطوة 1: جلب توكن الـ Iframe
 // ─────────────────────────────────────────────────────────────
 app.post('/api/get-iframe-token', async (req, res) => {
     console.log('📥 get-iframe-token | Request received');
 
     const customerData = req.body.customer || {};
-    // استخدام الإيميل أو رقم عشوائي كمعرف للمستخدم
     const merchantUserNo = customerData.email || 'guest_' + Date.now(); 
 
-    // 1. بناء الـ Payload المبسط المطلوب لجلب التوكن فقط
     const params = {
         merchant_id: MERCHANT_ID,
         merchant_user_no: merchantUserNo
@@ -88,11 +86,9 @@ app.post('/api/get-iframe-token', async (req, res) => {
     try {
         const bodyString = JSON.stringify(params);
         
-        // 2. توليد الوقت والتوقيع
         const timestamp = makeTs(); 
         const signature = generateSignature(MERCHANT_ID, timestamp, bodyString);
 
-        // 3. النطاق المعتمد لتهيئة التوكن حسب التوثيق
         const lianlianUrl = `https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/token`;
 
         const response = await fetch(lianlianUrl, {
@@ -101,7 +97,7 @@ app.post('/api/get-iframe-token', async (req, res) => {
                 'Content-Type': 'application/json',
                 'Signature': signature,
                 'Timestamp': timestamp,
-                'Timezone': 'Asia/Riyadh'
+                'Timezone': 'UTC' // تم التعديل هنا لتكون UTC
             },
             body: bodyString
         });
@@ -109,7 +105,6 @@ app.post('/api/get-iframe-token', async (req, res) => {
         const result = await response.json();
         console.log('LianLian Token API Response:', result);
 
-        // 4. إرسال التوكن إلى الواجهة الأمامية (عادة يكون في المتغير order)
         if (response.ok && (result.order || result.token || result.data?.token)) {
             const validToken = result.order || result.token || result.data?.token;
             console.log('🎯 Iframe Token Generated Successfully:', validToken);
@@ -126,7 +121,7 @@ app.post('/api/get-iframe-token', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// 🎯 الخطوة 3: التنفيذ الفعلي للدفع /payments (يستدعى بعد أخذ الكارد توكن من الواجهة)
+// 🎯 الخطوة 2: التنفيذ الفعلي للدفع
 // ─────────────────────────────────────────────────────────────
 app.post('/api/execute-payment', async (req, res) => {
     console.log('📥 execute-payment | Processing final payment');
@@ -141,11 +136,10 @@ app.post('/api/execute-payment', async (req, res) => {
     const finalAmount = amount || '10.00';
     const finalCurrency = currency || 'USD';
 
-    // 1. بناء الـ Payload الضخم الذي يحتوي على كل تفاصيل الطلب وبيانات البطاقة المشفرة
     const params = {
         merchant_transaction_id: 'TXN_' + timeNow,
         merchant_id: MERCHANT_ID,
-        payment_method: 'inter_credit_card', // طريقة الدفع بالبطاقة الائتمانية الدولية
+        payment_method: 'inter_credit_card', 
         notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
         country: 'SA',
         merchant_order: {
@@ -184,11 +178,9 @@ app.post('/api/execute-payment', async (req, res) => {
     try {
         const bodyString = JSON.stringify(params);
         
-        // 2. توليد الوقت والتوقيع
         const timestamp = makeTs(); 
         const signature = generateSignature(MERCHANT_ID, timestamp, bodyString);
 
-        // 3. النطاق المعتمد لخصم المبلغ وتنفيذ الدفع
         const lianlianUrl = `https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments`;
 
         const response = await fetch(lianlianUrl, {
@@ -205,7 +197,6 @@ app.post('/api/execute-payment', async (req, res) => {
         const result = await response.json();
         console.log('LianLian Payment API Response:', result);
 
-        // 4. إرسال نتيجة الدفع النهائية إلى الواجهة الأمامية
         if (response.ok && (result.return_code === 'SUCCESS' || result.status === 'SUCCESS' || result.status === 'PA')) {
             console.log('✅ Payment Executed Successfully:', result.merchant_transaction_id);
             return res.json({ success: true, data: result });
@@ -233,11 +224,11 @@ async function updateOrderStatusInSupabase(txnId, status) {
             {
                 method: 'PATCH',
                 headers: {
-                'Content-Type': 'application/json',
-                'Signature': signature,
-                'Timestamp': timestamp,
-                'Timezone': 'UTC'
-            },
+                    'apikey':        SUPABASE_KEY, // تمت استعادة المفاتيح الصحيحة هنا
+                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'Content-Type':  'application/json',
+                    'Prefer':        'return=minimal'
+                },
                 body: JSON.stringify({ status })
             }
         );
