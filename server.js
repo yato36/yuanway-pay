@@ -12,7 +12,6 @@ app.use((req, res, next) => {
     next();
 });
 
-// الاحتفاظ بالـ Body الخام للتحقق من التوقيع بدقة في الـ Webhook
 app.use(express.json({
     verify: (req, res, buf) => { req.rawBody = buf.toString(); }
 }));
@@ -22,16 +21,11 @@ process.on('unhandledRejection', reason => console.error('🔥', reason));
 
 app.get('/', (req, res) => res.send('🚀 Server running'));
 
-// ─── إعدادات الحساب والمفاتيح ───────────────────────────────────────────
 const MERCHANT_ID = '202605290003945002';
 
-function formatKey(raw, type) {
-    const clean = raw.replace(/-----.*?-----/g, '').replace(/[\r\n\s]+/g, '');
-    return `-----BEGIN ${type}-----\n${clean.match(/.{1,64}/g).join('\n')}\n-----END ${type}-----`;
-}
-
-// 1. مفتاحك الخاص (المستخدم لتوقيع طلباتك المرسلة للبوابة)
-const PRIVATE_KEY_RAW = `MIIEogIBAAKCAQBj0PeaXtoumSrgkOTrhqf+D6EMy/glD/qoHoZYkjMkmT8skOca
+// 👇👇👇 الصق المفتاح الخاص بالكامل هنا (مع ترويسة البداية والنهاية) 👇👇👇
+const PRIVATE_KEY_PEM = `-----BEGIN RSA PRIVATE KEY-----
+MIIEogIBAAKCAQBj0PeaXtoumSrgkOTrhqf+D6EMy/glD/qoHoZYkjMkmT8skOca
 cK1DdITUKmozwuuW71GUHHGUttiwUEV+Yq33Dtk30H2zoPd4PjGDM3j4hsUFTrpH
 oLuCqBC7KlxfUAOUaJFnT3M9TJeDnV27rtww3URoQmjheJqPubp3mhnIERMS/vIQ
 N3yBycMCtt9qdx9YYu5jqD3mSUHLw84WzN9MjO1B2HJuHdsYRPkzokMtFxCcaI/1
@@ -55,13 +49,21 @@ rmCMZ8Lsc9b6sHt3fRfgWpHWxnWP3AmqyggIyDb6RaZJ9QFItpW1jAbfgqfQhlf8
 iZpETleIPBK5hMXl8fbKs21CpheMspI54bk5rsj7XiMLnOQsrj9QUgSPMfMQJGWe
 aViBAoGAKHkY2VwDBR7LGOa7Qp+iGMqkdTMwoQ+QfK4wJ2Uy8XQtfWvngceUcXwy
 6x8Sle8V/8tTxhwjZCP4WlmP1ASh1ee58oMQhKqudEF2HOQssufgFsrfmF5MeGr3
-8xGpHTb68w2OFOxFEKyaXc9ADMWO+sMHTW4n0eMuXgisv4SQRDI=`;
+8xGpHTb68w2OFOxFEKyaXc9ADMWO+sMHTW4n0eMuXgisv4SQRDI=
+-----END RSA PRIVATE KEY-----`;
+// 👆👆👆 👆👆👆
 
-// 2. مفتاح LianLian العام المأخوذ من الصورة (يستخدم للتحقق من التحديثات القادمة إليك)
-const LL_PUBLIC_KEY_RAW = `MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7ihx5ENfsq9Ta+O6YjkzfGEMjoIJCaphJ9DPFipHZU5Xb1C2SUL81kady+xMbE2/sbWPN9roMhfcOWJ2ripNE1zhk9+8HbhxVOTcnbr7qZLNfcBv0ppim+R5p9kTCMzwwM9XR2YnvGo99MaBiFJA19jwGfof/pJGXQlo4ZHmbKGiMnTh1chvQAC7+/au7cMDJ93teHhlc2sl2eWnmJoSWGHZo7ja4LL6ybziWve+1miAW/2QDUSm6secOgW55wpr9B7w56dftvryYPRU+qjlwMPXfVWGOnikef83XRSdAbES2nUheasIHHy4wIWzp1Y8+DQIDAQABMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7ihx5ENFsq9Ta+O6YjkzfGEmjolJCAphJ9DPFipHZU5Xb1C2SUL81kady+xMbE2/sbWPN9roMhfcOWJ2ripNE1zhk9+8HbhxVOTcnbr7qZLNfcBv0ppim+R5p9kTCMzwwM9XR2YNvGo99MaBiFJA19jwGfof/pJGXQlo4ZHmBkGiMnTh1cHvQAC7+/au7cMDj93teHhlc2sI2eWnmJoSWGHZo7ja4LL6ybziWve+1miAW/2QDUSm6secOgW55wpr9B7w56dftvryYPRU+qjIwMPXfVWGOnikef83XRSdAbES2nUheaslHHy4wIWzp1Y8+DQIDAQAB`;
+// مفتاح LianLian العام (قمت بتجهيزه لك لتأمين الـ Webhook)
+const LL_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7
+ihx5ENfsq9Ta+O6YjkzfGEMjoIJCaphJ9DPFipHZU5Xb1C2SUL81kady+xMbE2/s
+bWPN9roMhfcOWJ2ripNE1zhk9+8HbhxVOTcnbr7qZLNfcBv0ppim+R5p9kTCMzww
+M9XR2YnvGo99MaBiFJA19jwGfof/pJGXQlo4ZHmbKGiMnTh1chvQAC7+/au7cMDJ
+93teHhlc2sl2eWnmJoSWGHZo7ja4LL6ybziWve+1miAW/2QDUSm6secOgW55wpr9
+B7w56dftvryYPRU+qjlwMPXfVWGOnikef83XRSdAbES2nUheasIHHy4wIWzp1Y8+
+DQIDAQAB
+-----END PUBLIC KEY-----`;
 
-const FORMATTED_PRIVATE_KEY = formatKey(PRIVATE_KEY_RAW, 'PRIVATE KEY');
-const FORMATTED_LL_PUBLIC_KEY = formatKey(LL_PUBLIC_KEY_RAW, 'PUBLIC KEY');
 
 function makeTs() {
     const n = new Date();
@@ -73,16 +75,15 @@ function generateSignature(merchantId, timestamp, bodyString) {
     const dataToSign = `${merchantId}&${timestamp}&${bodyString}`;
     const sign = crypto.createSign('RSA-SHA256');
     sign.update(dataToSign);
-    return sign.sign(FORMATTED_PRIVATE_KEY, 'base64');
+    return sign.sign(PRIVATE_KEY_PEM, 'base64');
 }
 
-// دالة التحقق من التوقيع لرسائل الـ Webhook القادمة من البوابة
 function verifyLianLianSignature(merchantId, timestamp, bodyString, incomingSignature) {
     try {
         const dataToVerify = `${merchantId}&${timestamp}&${bodyString}`;
         const verify = crypto.createVerify('RSA-SHA256');
         verify.update(dataToVerify);
-        return verify.verify(FORMATTED_LL_PUBLIC_KEY, incomingSignature, 'base64');
+        return verify.verify(LL_PUBLIC_KEY_PEM, incomingSignature, 'base64');
     } catch (err) {
         console.error('❌ Error during signature verification:', err);
         return false;
@@ -260,7 +261,6 @@ app.post('/api/webhook/lianlian', async (req, res) => {
     const incomingTimestamp = req.headers['timestamp'];
     const body = req.body;
 
-    // التحقق الأمن من التوقيع لمنع التلاعب بحالة الطلبات
     if (incomingSignature && incomingTimestamp) {
         const isValid = verifyLianLianSignature(MERCHANT_ID, incomingTimestamp, req.rawBody || JSON.stringify(body), incomingSignature);
         if (!isValid) {
@@ -269,7 +269,6 @@ app.post('/api/webhook/lianlian', async (req, res) => {
         }
     }
 
-    // إرجاع رد فوري للبوابة بنجاح الاستلام لتجنب تكرار الإرسال
     res.json({ return_code: 'SUCCESS', return_message: 'OK' });
 
     const txnId     = body.merchant_transaction_id || body.transaction_id || null;
