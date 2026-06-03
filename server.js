@@ -72,13 +72,12 @@ function generateSignature(merchantId, timestamp, bodyString) {
 // 🎯 المسار المحدث: جلب الـ token الصحيح للإطار (Elements)
 // ─────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────
-// 🎯 المسار المحدث: حسب تعليمات الدعم الفني لشركة LianLian حرفياً
+// 🎯 المسار المحدث: حسب توجيهات الدعم الفني (Elements API)
 // ─────────────────────────────────────────────────────────────
 app.post('/api/get-iframe-token', async (req, res) => {
     console.log('📥 get-iframe-token (Elements API) | amount:', req.body.amount);
 
     const timeNow  = Date.now();
-    const ts       = makeTs(); // صيغة الوقت yyyyMMddHHmmss
     const amount   = req.body.amount   || '10.00';
     const currency = req.body.currency || 'USD';
     const customerData = req.body.customer || {};
@@ -90,7 +89,7 @@ app.post('/api/get-iframe-token', async (req, res) => {
         country: 'SA',
         merchant_order: {
             merchant_order_id:   'ORD_' + timeNow,
-            merchant_order_time: ts,
+            merchant_order_time: makeTs(), // دالة الوقت الموجودة مسبقاً في الكود
             order_amount:        parseFloat(amount),
             order_currency_code: currency,
             order_description:   'Yuan Way Order',
@@ -118,19 +117,19 @@ app.post('/api/get-iframe-token', async (req, res) => {
     try {
         const bodyString = JSON.stringify(params);
         
-        // 2. إنشاء التوقيع باستخدام نفس صيغة الوقت
-        const signature = generateSignature(MERCHANT_ID, ts, bodyString);
+        // 2. التوقيع باستخدام نظام V3 القياسي (Unix Timestamp)
+        const timestamp = Math.floor(Date.now() / 1000).toString();
+        const signature = generateSignature(MERCHANT_ID, timestamp, bodyString);
 
-        // 3. الرابط بالضبط كما حدده الدعم الفني مع استخدام نطاق celer-api الذي يعمل
-        const lianlianUrl = `https://celer-api.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments/elements`;
+        // 3. النطاق التجريبي القياسي المعتمد لـ Elements API V3
+        const lianlianUrl = `https://gapi-sandbox.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments/elements`;
 
         const response = await fetch(lianlianUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Signature': signature,
-                'Timezone': 'Asia/Hong_Kong', // ⚠️ تعديل هام لحل خطأ (timezone incorrect)
-                'Timestamp': ts
+                'Timestamp': timestamp
             },
             body: bodyString
         });
