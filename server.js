@@ -69,63 +69,30 @@ function generateSignature(merchantId, timestamp, bodyString) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 🎯 المسار المحدث: جلب الـ token الصحيح للإطار (Elements)
-// ─────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────
-// 🎯 المسار المحدث: حسب توجيهات الدعم الفني (Elements API)
-// ─────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────
-// 🎯 المسار المحدث: حسب توجيهات الدعم الفني وصور التوثيق
+// 🎯 الخطوة 1: جلب توكن الـ Iframe المبسط من /token
 // ─────────────────────────────────────────────────────────────
 app.post('/api/get-iframe-token', async (req, res) => {
-    console.log('📥 get-iframe-token (Elements API) | amount:', req.body.amount);
+    console.log('📥 get-iframe-token | Request received');
 
-    const timeNow  = Date.now();
-    const amount   = req.body.amount   || '10.00';
-    const currency = req.body.currency || 'USD';
     const customerData = req.body.customer || {};
+    // استخدام الإيميل أو رقم عشوائي كمعرف للمستخدم
+    const merchantUserNo = customerData.email || 'guest_' + Date.now(); 
 
-    // 1. بناء الـ Payload الكامل
+    // 1. بناء الـ Payload المبسط المطلوب لجلب التوكن فقط
     const params = {
-        merchant_transaction_id: 'TXN_' + timeNow,
-        notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
-        country: 'SA',
-        merchant_order: {
-            merchant_order_id:   'ORD_' + timeNow,
-            merchant_order_time: makeTs(), 
-            order_amount:        parseFloat(amount),
-            order_currency_code: currency,
-            order_description:   'Yuan Way Order',
-            products: [{
-                product_id:        '101',
-                sku:               'YW-001',
-                name:              'Yuanway Product',
-                price:             parseFloat(amount),
-                quantity:          1,
-                url:               'https://yuanway2030.com',
-                category:          'general',
-                shipping_provider: 'other'
-            }]
-        },
-        customer: {
-            customer_type: 'I',
-            first_name:    customerData.first_name || 'Customer',
-            last_name:     customerData.last_name  || 'User',
-            full_name:     customerData.full_name  || 'Customer User',
-            email:         customerData.email      || 'yuanwayco@gmail.com',
-            phone:         customerData.phone      || '+966500000000'
-        }
+        merchant_id: MERCHANT_ID,
+        merchant_user_no: merchantUserNo
     };
 
     try {
         const bodyString = JSON.stringify(params);
         
-        // 2. استخدام دالة makeTs لتوليد الوقت بالصيغة المطلوبة yyyyMMddHHmmss
+        // 2. توليد الوقت والتوقيع
         const timestamp = makeTs(); 
         const signature = generateSignature(MERCHANT_ID, timestamp, bodyString);
 
-        // 3. النطاق المعتمد لـ Elements API حسب صور التوثيق
-        const lianlianUrl = `https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments/elements`;
+        // 3. النطاق المعتمد لتهيئة التوكن حسب التوثيق
+        const lianlianUrl = `https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/token`;
 
         const response = await fetch(lianlianUrl, {
             method: 'POST',
@@ -133,19 +100,19 @@ app.post('/api/get-iframe-token', async (req, res) => {
                 'Content-Type': 'application/json',
                 'Signature': signature,
                 'Timestamp': timestamp,
-                'Timezone': 'Asia/Riyadh' // إضافة حقل المنطقة الزمنية الإلزامي
+                'Timezone': 'Asia/Riyadh'
             },
             body: bodyString
         });
 
         const result = await response.json();
-        console.log('LianLian Elements API Response:', result);
+        console.log('LianLian Token API Response:', result);
 
-        // 4. إرسال التوكن إلى الواجهة الأمامية
-        if (response.ok && (result.token || result.data?.token)) {
-            const validToken = result.token || result.data.token;
-            console.log('🎯 Token Generated Successfully:', validToken);
-            return res.json({ success: true, token: validToken, order_id: result.merchant_transaction_id });
+        // 4. إرسال التوكن إلى الواجهة الأمامية (عادة يكون في المتغير order)
+        if (response.ok && (result.order || result.token || result.data?.token)) {
+            const validToken = result.order || result.token || result.data?.token;
+            console.log('🎯 Iframe Token Generated Successfully:', validToken);
+            return res.json({ success: true, token: validToken });
         } else {
             console.error('❌ LianLian Error:', result);
             return res.status(400).json({ success: false, error: result.message || result.return_message || 'فشل جلب التوكن من LianLian' });
@@ -156,6 +123,102 @@ app.post('/api/get-iframe-token', async (req, res) => {
         return res.status(500).json({ success: false, error: 'حدث خطأ داخلي في السيرفر' });
     }
 });
+
+// ─────────────────────────────────────────────────────────────
+// 🎯 الخطوة 3: التنفيذ الفعلي للدفع /payments (يستدعى بعد أخذ الكارد توكن من الواجهة)
+// ─────────────────────────────────────────────────────────────
+app.post('/api/execute-payment', async (req, res) => {
+    console.log('📥 execute-payment | Processing final payment');
+
+    const { amount, currency, customer, card_token, holder_name } = req.body;
+    
+    if (!card_token) {
+        return res.status(400).json({ success: false, error: 'رمز البطاقة (card_token) مفقود' });
+    }
+
+    const timeNow  = Date.now();
+    const finalAmount = amount || '10.00';
+    const finalCurrency = currency || 'USD';
+
+    // 1. بناء الـ Payload الضخم الذي يحتوي على كل تفاصيل الطلب وبيانات البطاقة المشفرة
+    const params = {
+        merchant_transaction_id: 'TXN_' + timeNow,
+        merchant_id: MERCHANT_ID,
+        payment_method: 'inter_credit_card', // طريقة الدفع بالبطاقة الائتمانية الدولية
+        notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
+        country: 'SA',
+        merchant_order: {
+            merchant_order_id:   'ORD_' + timeNow,
+            merchant_order_time: makeTs(), 
+            order_amount:        parseFloat(finalAmount),
+            order_currency_code: finalCurrency,
+            order_description:   'Yuan Way Order',
+            products: [{
+                product_id:        '101',
+                sku:               'YW-001',
+                name:              'Yuanway Product',
+                price:             parseFloat(finalAmount),
+                quantity:          1,
+                url:               'https://yuanway2030.com',
+                category:          'general',
+                shipping_provider: 'other'
+            }]
+        },
+        customer: {
+            customer_type: 'I',
+            first_name:    customer?.first_name || 'Customer',
+            last_name:     customer?.last_name  || 'User',
+            full_name:     customer?.full_name  || 'Customer User',
+            email:         customer?.email      || 'yuanwayco@gmail.com',
+            phone:         customer?.phone      || '+966500000000'
+        },
+        payment_data: {
+            card: {
+                card_token: card_token,
+                holder_name: holder_name || customer?.full_name || 'Customer User'
+            }
+        }
+    };
+
+    try {
+        const bodyString = JSON.stringify(params);
+        
+        // 2. توليد الوقت والتوقيع
+        const timestamp = makeTs(); 
+        const signature = generateSignature(MERCHANT_ID, timestamp, bodyString);
+
+        // 3. النطاق المعتمد لخصم المبلغ وتنفيذ الدفع
+        const lianlianUrl = `https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments`;
+
+        const response = await fetch(lianlianUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Signature': signature,
+                'Timestamp': timestamp,
+                'Timezone': 'Asia/Riyadh'
+            },
+            body: bodyString
+        });
+
+        const result = await response.json();
+        console.log('LianLian Payment API Response:', result);
+
+        // 4. إرسال نتيجة الدفع النهائية إلى الواجهة الأمامية
+        if (response.ok && (result.return_code === 'SUCCESS' || result.status === 'SUCCESS' || result.status === 'PA')) {
+            console.log('✅ Payment Executed Successfully:', result.merchant_transaction_id);
+            return res.json({ success: true, data: result });
+        } else {
+            console.error('❌ Payment Execution Error:', result);
+            return res.status(400).json({ success: false, error: result.message || result.return_message || 'تم رفض العملية من البنك' });
+        }
+
+    } catch (err) {
+        console.error('🔥 Server Exception during payment execution:', err);
+        return res.status(500).json({ success: false, error: 'حدث خطأ داخلي أثناء معالجة الدفع' });
+    }
+});
+
 
 // ─── Supabase REST helper ──────────────────────────────────
 const SUPABASE_URL = 'https://yuxwglmtycsakllhwoaj.supabase.co';
