@@ -92,7 +92,7 @@ async function updateOrderStatus(orderId, status) {
 
 // ── signature helpers ────────────────────────────────────
 function makeTs() {
-    return new Date().toISOString().replace(/[-T:.Z]/g, '').slice(0, 14);
+    return new Date().toISOString().replace(/T/, '').replace(/\..+/, '').replace(/:/g, '').replace(/-/g, '');
 }
 function sign(bodyObject, timestamp) {
     // ترتيب المفاتيح
@@ -156,15 +156,15 @@ app.post('/api/get-iframe-token', async (req, res) => {
         const url = `https://celer-api.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/token`;
         
         const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                "signature": signature,
-                "timezone": "Asia/Hong_Kong",
-                "timestamp": ts,
-                "Content-Type": "application/json"
-            },
-            body: rawBody
-        });
+    method: 'POST',
+    headers: {
+        "signature": signature,
+        "timezone": "Asia/Hong_Kong",
+        "timestamp": ts, // تأكد أن ts هو رقم بـ 14 خانة
+        "content-type": "application/json" // اجعلها حروفاً صغيرة
+    },
+    body: rawBody
+});
 
         const result = await response.json();
         console.log('💬 API Response:', JSON.stringify(result));
