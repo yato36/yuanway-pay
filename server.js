@@ -56,8 +56,9 @@ o1/KuCEgl6yMZxZ59UD0/Z7G`;
 const FORMATTED_PRIVATE_KEY = formatKey(PRIVATE_KEY_RAW, 'PRIVATE KEY');
 
 function makeTs() {
-    const n = new Date(), p = x => String(x).padStart(2,'0');
-    return `${n.getFullYear()}${p(n.getMonth()+1)}${p(n.getDate())}${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`;
+    const n = new Date();
+    const p = x => String(x).padStart(2,'0');
+    return `${n.getUTCFullYear()}${p(n.getUTCMonth()+1)}${p(n.getUTCDate())}${p(n.getUTCHours())}${p(n.getUTCMinutes())}${p(n.getUTCSeconds())}`;
 }
 
 // دالة لتوليد التوقيع الرقمي المطلوب من LianLian Pay
@@ -196,7 +197,7 @@ app.post('/api/execute-payment', async (req, res) => {
                 'Content-Type': 'application/json',
                 'Signature': signature,
                 'Timestamp': timestamp,
-                'Timezone': 'Asia/Riyadh'
+                'Timezone': 'UTC'
             },
             body: bodyString
         });
@@ -232,11 +233,11 @@ async function updateOrderStatusInSupabase(txnId, status) {
             {
                 method: 'PATCH',
                 headers: {
-                    'apikey':        SUPABASE_KEY,
-                    'Authorization': `Bearer ${SUPABASE_KEY}`,
-                    'Content-Type':  'application/json',
-                    'Prefer':        'return=minimal'
-                },
+                'Content-Type': 'application/json',
+                'Signature': signature,
+                'Timestamp': timestamp,
+                'Timezone': 'UTC'
+            },
                 body: JSON.stringify({ status })
             }
         );
