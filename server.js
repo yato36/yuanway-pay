@@ -125,7 +125,8 @@ app.post('/api/get-iframe-token', (req, res) => {
             first_name:    customerData.first_name || 'Customer',
             last_name:     customerData.last_name  || 'User',
             full_name:     customerData.full_name  || 'Customer User',
-            email:         customerData.email || email
+            email:         customerData.email || email,
+            phone:         customerData.phone || '+966500000000' // 👈 أضف هذا السطر هنا
         }
     };
 
