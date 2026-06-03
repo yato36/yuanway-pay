@@ -127,15 +127,20 @@ function llHeaders(bodyString) {
 app.post('/api/get-iframe-token', async (req, res) => {
     console.log('📥 get-iframe-token');
 
+    // استخدم بياناتك الحقيقية هنا
+    const MERCHANT_ID = '202605290003945002'; // رقم التاجر الخاص بك
+    const SUB_MERCHANT_ID = '1020260529853001'; // رقم التاجر الفرعي (Site ID) الخاص بك
+
     const body = {
         merchant_id:      MERCHANT_ID,
+        sub_merchant_id:  SUB_MERCHANT_ID,
         merchant_user_no: req.body.email || 'guest_' + Date.now()
     };
     const bodyStr = JSON.stringify(body);
 
     try {
-        // ✅ الـ endpoint الصحيح حسب LianLian Support
-        const url = `https://celer-api.LianLianpay-inc.com/v3/merchants/<merchant_id>/token`;
+        
+        const url = `https://celer-api.LianLianpay-inc.com/v3/merchants/202605290003945002/token`;
         const response = await fetch(url, {
             method:  'POST',
             headers: llHeaders(bodyStr),
