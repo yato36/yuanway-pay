@@ -10,7 +10,7 @@ const SUB_MERCHANT_ID = '1020260529853001';
 const SUPABASE_URL = 'https://yuxwglmtycsakllhwoaj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1eHdnbG10eWNzYWtsbGh3b2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDM4NTMsImV4cCI6MjA4NjMxOTg1M30.ynlf7dKK4JzwHH5YjtetqAyCbLuERxFZZ6g1kkTbYGk';
 
-// المفتاح الخاص بصيغة PKCS#8 المباشرة للنظام
+// المفتاح الخاص بصيغة PKCS#8 المتوافق مع شروط الحزمة
 const PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
 MIIEogIBAAKCAQBj0PeaXtoumSrgkOTrhqf+D6EMy/glD/qoHoZYkjMkmT8skOca
 cK1DdITUKmozwuuW71GUHHGUttiwUEV+Yq33Dtk30H2zoPd4PjGDM3j4hsUFTrpH
@@ -39,6 +39,7 @@ aViBAoGAKHkY2VwDBR7LGOa7Qp+iGMqkdTMwoQ+QfK4wJ2Uy8XQtfWvngceUcXwy
 8xGpHTb68w2OFOxFEKyaXc9ADMWO+sMHTW4n0eMuXgisv4SQRDI=
 -----END PRIVATE KEY-----`;
 
+// LianLian Public Key
 const LL_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7
 ihx5ENfsq9Ta+O6YjkzfGEMjoIJCaphJ9DPFipHZU5Xb1C2SUL81kady+xMbE2/s
@@ -49,7 +50,7 @@ B7w56dftvryYPRU+qjlwMPXfVWGOnikef83XRSdAbES2nUheasIHHy4wIWzp1Y8+
 DQIDAQAB
 -----END PUBLIC KEY-----`;
 
-// تهيئة الـ SDK للمسارات الأخرى فقط
+// ✅ تهيئة الـ SDK للإنتاج الفعلي ليعمل متجرك فوراً
 const config = {
     env:               'product', 
     sign_type:         'RSA',
@@ -57,28 +58,13 @@ const config = {
     ll_sign_key:       LL_PUBLIC_KEY_PEM,
     merchant_id:       MERCHANT_ID,
     sub_merchant_id:   SUB_MERCHANT_ID,
-    is_print_log:      false
+    is_print_log:      true
 };
 const LLPay = new LLPaySdk(config);
 
-// --- مساعدات التوقيع والوقت القياسي الفعلي بـ SHA1 القياسي للبوابة ---
+// Helper to generate current timestamp
 function makeTimestamp() {
     return new Date().toISOString().replace(/T/, '').replace(/\..+/, '').replace(/:/g, '').replace(/-/g, '').slice(0, 14);
-}
-
-function generateLianLianSHA1Signature(bodyObject, timestamp) {
-    const sortedKeys = Object.keys(bodyObject).sort(); 
-    let bodyString = '{';
-    sortedKeys.forEach((key, index) => {
-        bodyString += `"${key}":"${bodyObject[key]}"` + (index < sortedKeys.length - 1 ? ',' : '');
-    });
-    bodyString += '}';
-
-    // البنية القياسية للتوقيع المكتشفة في لغات البوابة الأخرى
-    const dataToSign = `${MERCHANT_ID}&${timestamp}&${bodyString}`;
-    
-    // ✅ الاستخدام الصارم لخوارزمية RSA-SHA1 كما تتوقعها خوادم المطورين لديهم
-    return crypto.createSign('RSA-SHA1').update(dataToSign).sign(PRIVATE_KEY_PEM, 'base64');
 }
 
 // --- Middleware Setup ---
@@ -95,54 +81,36 @@ app.use(express.json({
     verify: (req, res, buf) => { req.rawBody = buf.toString(); }
 }));
 
+// --- Base Routes ---
 app.get('/', (req, res) => res.send('Yuanway Gateway Service Active'));
 
 // --- API Endpoints ---
 
-// Route 1: ✅ تجاوز الـ SDK المكسور والاتصال المباشر بـ POST الفعلي الموضح في صورتك الحالية
-app.post('/api/get-iframe-token', async (req, res) => {
-    console.log('Dispatching official POST request for token based on new documentation image...');
+// Route 1: جلب التوكن القياسي طبقاً للمثال الصيني الموضح بالوثائق وبدون بارامترات زائدة تسبب خلل التوقيع
+app.post('/api/get-iframe-token', (req, res) => {
+    console.log('Fetching iframe token strictly matching the original SDK documentation example...');
 
-    const payload = {
-        merchant_id:      MERCHANT_ID,
-        merchant_user_no: req.body.email || `guest_${Date.now()}`,
-        sub_merchant_id:  SUB_MERCHANT_ID
-    };
-
-    const timestamp = makeTimestamp();
-    const signature = generateLianLianSHA1Signature(payload, timestamp);
-
-    try {
-        // الروابط المباشرة الصحيحة المأخوذة من صورتك الحالية للـ Production الفعلي ليعمل متجرك فوراً
-        const endpoint = `https://gpapi.lianlianpay.com/v3/merchants/${MERCHANT_ID}/token`;
-        
-        const response = await fetch(endpoint, {
-            method: 'POST', // تطبيق شرط الـ POST الفعلي المتواجد في الصورة!
-            headers: {
-                'signature':     signature,
-                'timestamp':     timestamp,
-                'timezone':      'UTC',
-                'content-type':  'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-
-        const result = await response.json();
-        console.log('Official Gateway Response:', JSON.stringify(result));
-
-        // قراءة التوكن الحقيقي من الحقل المخصص له طبقاً للمستندات الشغالة
-        const token = result.token || result.data?.token;
-
-        if (token) {
-            return res.json({ success: true, token: token });
-        } else {
-            return res.status(400).json({ success: false, error: result.return_message || 'Declined', raw: result });
+    LLPay.getTokenIframe({
+        // ✅ الاستدعاء المباشر والخالي من البارامترات طبقاً للصور الرسمية للمكتبة المرفقة
+        successcb: (result) => {
+            console.log('SDK documentation match success:', JSON.stringify(result));
+            const responseData = result.body ? JSON.parse(result.body) : result;
+            if (responseData.token || (responseData.data && responseData.data.token)) {
+                return res.json({ success: true, token: responseData.token || responseData.data.token });
+            } else {
+                return res.status(400).json(responseData);
+            }
+        },
+        failcb: (err) => {
+            console.error('SDK documentation match failure:', err);
+            try {
+                const parsedErr = typeof err === 'string' ? JSON.parse(err) : err;
+                return res.status(400).json({ success: false, error: parsedErr.return_message || parsedErr });
+            } catch(e) {
+                return res.status(400).json({ success: false, error: err });
+            }
         }
-
-    } catch(err) {
-        console.error('Fatal Direct Connection Failure:', err);
-        return res.status(500).json({ success: false, error: 'Connection Failed' });
-    }
+    });
 });
 
 // Route 2: Confirm and Execute Credit Card Payment via SDK
