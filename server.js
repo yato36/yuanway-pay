@@ -91,6 +91,11 @@ app.use(express.json({
 // --- Base Routes ---
 app.get('/', (req, res) => res.send('Yuanway Gateway Service Active'));
 
+// Webhook test endpoint
+app.get('/api/webhook/lianlian', (req, res) => {
+    res.json({ status: 'webhook endpoint active', timestamp: new Date().toISOString() });
+});
+
 // --- API Endpoints ---
 
 // Route 1: جلب الـ iframe token عبر الـ SDK مباشرةً
