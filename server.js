@@ -92,24 +92,19 @@ async function updateOrderStatus(orderId, status) {
 
 // ── signature helpers ────────────────────────────────────
 function makeTs() {
-    const n = new Date(), p = x => String(x).padStart(2,'0');
-    return `${n.getUTCFullYear()}${p(n.getUTCMonth()+1)}${p(n.getUTCDate())}${p(n.getUTCHours())}${p(n.getUTCMinutes())}${p(n.getUTCSeconds())}`;
+    return new Date().toISOString().replace(/[-T:.Z]/g, '').slice(0, 14);
 }
-
 function sign(bodyObject, timestamp) {
-    // 1. ترتيب مفاتيح الـ body أبجدياً
-    const sortedKeys = Object.keys(bodyObject).sort();
-    const sortedBody = {};
-    sortedKeys.forEach(key => { sortedBody[key] = bodyObject[key]; });
+    // ترتيب المفاتيح
+    const sortedKeys = Object.keys(bodyObject).sort(); 
+    // بناء سلسلة نصية بدون مسافات (مهم جداً)
+    let bodyString = '{';
+    sortedKeys.forEach((key, index) => {
+        bodyString += `"${key}":"${bodyObject[key]}"` + (index < sortedKeys.length - 1 ? ',' : '');
+    });
+    bodyString += '}';
 
-    // 2. تحويل الـ body المرتب إلى نص JSON (بدون مسافات)
-    const bodyString = JSON.stringify(sortedBody);
-    
-    // 3. بناء سلسلة التوقيع
     const data = `${MERCHANT_ID}&${timestamp}&${bodyString}`;
-    
-    console.log("📝 String to sign:", data); // مفيد جداً للمطابقة لاحقاً
-    
     return crypto.createSign('RSA-SHA256').update(data).sign(PRIVATE_KEY_PEM, 'base64');
 }
 
@@ -137,35 +132,53 @@ function llHeaders(bodyString) {
 // يرجع { token: "..." } للاستخدام في LLP.elements().create('card', { token })
 // ══════════════════════════════════════════════════════
 app.post('/api/get-iframe-token', async (req, res) => {
-    // 1. البيانات الحقيقية
-    const MERCHANT_ID = '202605290003945002';
-    const SUB_MERCHANT_ID = '1020260529853001';
-    const TIMESTAMP = '20260603090000'; // يجب أن يكون بتنسيقهم yyyyMMddHHmmss
+    console.log('📥 get-iframe-token');
+
+    const MERCHANT_ID = '202605290003945002'; 
+    const SUB_MERCHANT_ID = '1020260529853001'; 
     
-    // 2. الـ Body كما طلبوه بالضبط
-    const rawBody = JSON.stringify({
-       "merchant_id": MERCHANT_ID,
-       "sub_merchant_id": SUB_MERCHANT_ID,
-       "merchant_user_no": req.body.email || 'user1234567890'
-    });
+    // 1. بناء الـ Body بدقة
+    const bodyObj = {
+        "merchant_id": MERCHANT_ID,
+        "merchant_user_no": req.body.email || 'guest_' + Date.now(),
+        "sub_merchant_id": SUB_MERCHANT_ID
+    };
+    const rawBody = JSON.stringify(bodyObj);
 
-    // 3. التوقيع (يجب أن تستخدم دالة sign الخاصة بك مع هذه المعطيات)
-    const signature = sign(rawBody, TIMESTAMP); // تأكد أن دالة sign تستخدم نفس الترتيب
+    // 2. توليد الـ Timestamp (يجب أن يكون 14 رقماً)
+    const ts = makeTs(); 
 
-    // 4. الطلب
-    const response = await fetch(`https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/token`, {
-        method: 'POST',
-        headers: {
-            "signature": signature,
-            "timezone": "Asia/Hong_Kong",
-            "timestamp": TIMESTAMP,
-            "Content-Type": "application/json"
-        },
-        body: rawBody
-    });
+    // 3. بناء التوقيع (استخدم دالة sign الخاصة بك التي تأخذ الكائن المرتب)
+    const signature = sign(bodyObj, ts); 
 
-    const result = await response.json();
-    res.json(result);
+    try {
+        // 4. الطلب باستخدام الـ Headers التي أرسلتها إيمي
+        const url = `https://celer-api.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/token`;
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                "signature": signature,
+                "timezone": "Asia/Hong_Kong",
+                "timestamp": ts,
+                "Content-Type": "application/json"
+            },
+            body: rawBody
+        });
+
+        const result = await response.json();
+        console.log('💬 API Response:', JSON.stringify(result));
+
+        if (result.token || result.data) {
+            return res.json({ success: true, token: result.token || result.data.token });
+        } else {
+            return res.status(400).json(result);
+        }
+
+    } catch(err) {
+        console.error('🔥 Error:', err);
+        return res.status(500).json({ success: false, error: 'خطأ في الاتصال' });
+    }
 });
 
 // ══════════════════════════════════════════════════════
