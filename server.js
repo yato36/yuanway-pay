@@ -112,7 +112,6 @@ app.post('/api/get-iframe-token', (req, res) => {
         params: queryParams,
         successcb: (result) => {
             console.log('SDK successful response payload:', JSON.stringify(result));
-            // جلب التוكن من الـ body بعد تحليله تلقائياً بالـ SDK
             const responseData = result.body ? JSON.parse(result.body) : result;
             if (responseData.token || (responseData.data && responseData.data.token)) {
                 return res.json({ success: true, token: responseData.token || responseData.data.token });
