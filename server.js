@@ -1,6 +1,5 @@
 const express = require('express');
-const path    = require('path');
-const fs      = require('fs');
+const crypto  = require('crypto');
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
@@ -11,9 +10,34 @@ const SUB_MERCHANT_ID = '1020260529853001';
 const SUPABASE_URL = 'https://yuxwglmtycsakllhwoaj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1eHdnbG10eWNzYWtsbGh3b2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDM4NTMsImV4cCI6MjA4NjMxOTg1M30.ynlf7dKK4JzwHH5YjtetqAyCbLuERxFZZ6g1kkTbYGk';
 
-// ✅ قراءة المفتاح الخاص مباشرة من الملف النصي لضمان سلامة التشفير ومنع أخطاء ASN1
-const privateKeyPath = path.join(__dirname, 'private.key');
-const PRIVATE_KEY_PEM = fs.readFileSync(privateKeyPath, 'utf8').trim();
+// المفتاح الخاص الأصلي
+const PRIVATE_KEY_PEM = `-----BEGIN RSA PRIVATE KEY-----
+MIIEogIBAAKCAQBj0PeaXtoumSrgkOTrhqf+D6EMy/glD/qoHoZYkjMkmT8skOca
+cK1DdITUKmozwuuW71GUHHGUttiwUEV+Yq33Dtk30H2zoPd4PjGDM3j4hsUFTrpH
+oLuCqBC7KlxfUAOUaJFnT3M9TJeDnV27rtww3URoQmjheJqPubp3mhnIERMS/vIQ
+N3yBycMCtt9qdx9YYu5jqD3mSUHLw84WzN9MjO1B2HJuHdsYRPkzokMtFxCcaI/1
+jfnw6R73/F6Tia1Zr6TxrFIJhHQXWAC/cE0LZWXNhi3SD1Rp281sV6vPumSg7+cs
+30CXQUiV1SL3AEPNoy3A33dInxdOeJwPZYG/AgMBAAECggEAKmxQMA4MUS3MKXGr
+ueabU8G0w0mVh7sI35dJpi9NCUsQrJJRhs1I9ph5M+trA+DeXGIOnBKSu5AS/KzB
+PHwYUB7Bd5VnN4c8ZqCYTpj72zT8W8sgJP1NdLSVl9bjN6c8PkFLO0trQSxiYQ/r
+HK+u6h3Ay0ceaGXn2xonBFo8hukizBu4AiPW7rilGgVm2+fu+QqVnNOEgeZOusRM
+L0AeYROvHGE6rqD913MiecWQUomAP7Saflc8/cS8VCAFeU7ty0nM0r8U7xQZgibr
+VFiMIA7wZRvZDFJCVSHfbL5RSNYcl0MQ3alE4d9n7BCXRx1gtqGzoMlgwryQv+rs
+AHV4oQKBgQCotlMVbXbihTMronpWSiSq8OLkjLVYgkzwwkG+HIamUfxXQ/G0c9H8
+kDdD8NZsg1epaMobfYfgxrE1x/jjwW2UZObCotTYkCe6GGOVFyhDfSbSM8OC8tj4
+Kcxcg02iJvWGyolFkmqewyzokl6vkNPiqCNqyhCYBJw4Ji8IKuwwBwKBgQCXdXtQ
+qVWXs8Ou0x3ZRrbBOvKDRg4R8+yTfrfDvC25Ld39KrsYMhsUjQHxzSwaFfFy6wED
+2s8NOd0WMjKh1SOWR5js7XBNPx6zpuc1fl9gqQj0EQ3092iqKCmTE3Klnb7hIjD0
+t9P9nY6mrVcid8IsIkv/KMKK0dl7LPWX1PJCiQKBgD8+MYDrys/5LIhj3MYx/vLR
+X8xa7rPiDGOH/kr8uIDqZNR1lMqXTBUIHp9qTYbZ6WeI75JEiUX6VX2am7MM1D33
+YQV/MpiH2UyKTfIafy5lYMMVQmn5DNpiGMhpNBXf0tQXYkPhMfSXp2L7U2Euwi7J
+5pTmcDf8Km9l6OV/6Y/LAoGBAIgcfAWxJ8p9Mo4aC+kHM5XTc72lZ1+a5jBm4J52
+rmCMZ8Lsc9b6sHt3fRfgWpHWxnWP3AmqyggIyDb6RaZJ9QFItpW1jAbfgqfQhlf8
+iZpETleIPBK5hMXl8fbKs21CpheMspI54bk5rsj7XiMLnOQsrj9QUgSPMfMQJGWe
+aViBAoGAKHkY2VwDBR7LGOa7Qp+iGMqkdTMwoQ+QfK4wJ2Uy8XQtfWvngceUcXwy
+6x8Sle8V/8tTxhwjZCP4WlmP1ASh1ee58oMQhKqudEF2HOQssufgFsrfmF5MeGr3
+8xGpHTb68w2OFOxFEKyaXc9ADMWO+sMHTW4n0eMuXgisv4SQRDI=
+-----END RSA PRIVATE KEY-----`;
 
 // LianLian Public Key
 const LL_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
@@ -26,11 +50,28 @@ B7w56dftvryYPRU+qjlwMPXfVWGOnikef83XRSdAbES2nUheasIHHy4wIWzp1Y8+
 DQIDAQAB
 -----END PUBLIC KEY-----`;
 
-// --- Initialize LianLian SDK Instance ---
+// --- المساعد الذكي للتوقيع الصارم تجنباً لعيوب الـ SDK ---
+function makeTimestamp() {
+    return new Date().toISOString().replace(/T/, '').replace(/\..+/, '').replace(/:/g, '').replace(/-/g, '').slice(0, 14);
+}
+
+function generateNativeSignature(bodyObject, timestamp) {
+    const sortedKeys = Object.keys(bodyObject).sort(); 
+    let bodyString = '{';
+    sortedKeys.forEach((key, index) => {
+        bodyString += `"${key}":"${bodyObject[key]}"` + (index < sortedKeys.length - 1 ? ',' : '');
+    });
+    bodyString += '}';
+
+    const data = `${MERCHANT_ID}&${timestamp}&${bodyString}`;
+    return crypto.createSign('RSA-SHA256').update(data).sign(PRIVATE_KEY_PEM, 'base64');
+}
+
+// تهيئة الـ SDK مع تمرير المفتاح الخاص ككائن مجهز برمجياً لحل مشكلة قراءة نصوص الـ ASN1 بالـ Node
 const config = {
     env:               'product', 
     sign_type:         'RSA',
-    merchant_sign_key: PRIVATE_KEY_PEM, 
+    merchant_sign_key: crypto.createPrivateKey({ key: PRIVATE_KEY_PEM, format: 'pem', type: 'pkcs1' }), 
     ll_sign_key:       LL_PUBLIC_KEY_PEM,
     merchant_id:       MERCHANT_ID,
     sub_merchant_id:   SUB_MERCHANT_ID,
@@ -77,25 +118,46 @@ async function updateOrderStatus(orderId, status) {
 
 // --- API Endpoints ---
 
-// Route 1: Fetch Embedded Iframe Token via SDK
-app.post('/api/get-iframe-token', (req, res) => {
-    console.log('Dispatching request wrapper for getTokenIframe...');
+// Route 1: جلب التوكن مع معالجة حاسمة للتوقيع تفادياً لعيوب مكتبات الـ SDK الداخلية
+app.post('/api/get-iframe-token', async (req, res) => {
+    console.log('Dispatching robust native signature request for iframe token...');
 
-    const params = {
-        merchant_user_no: req.body.email || `guest_${Date.now()}`
+    const payload = {
+        merchant_id:      MERCHANT_ID,
+        merchant_user_no: req.body.email || `guest_${Date.now()}`,
+        sub_merchant_id:  SUB_MERCHANT_ID
     };
 
-    LLPay.getTokenIframe({
-        params: params,
-        successcb: (result) => {
-            console.log('SDK successful response payload:', JSON.stringify(result));
-            return res.json({ success: true, token: result.token || result.body?.token });
-        },
-        failcb: (err) => {
-            console.error('SDK explicit failure return:', JSON.stringify(err));
-            return res.status(400).json({ success: false, error: err.return_message || 'Token generation rejected' });
+    const timestamp = makeTimestamp();
+    // توليد التوقيع بالنظام الأساسي للبيئة بدون الاعتماد على الـ SDK المكسور داخلياً
+    const nativeSignature = generateNativeSignature(payload, timestamp);
+
+    try {
+        const endpoint = `https://celer-api.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/token`;
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'signature':    nativeSignature,
+                'timezone':     'Asia/Hong_Kong',
+                'timestamp':    timestamp,
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        console.log('Gateway response payload:', JSON.stringify(result));
+
+        if (result.token || result.data) {
+            return res.json({ success: true, token: result.token || result.data.token });
+        } else {
+            return res.status(400).json(result);
         }
-    });
+
+    } catch(err) {
+        console.error('Gateway native execution failure:', err);
+        return res.status(500).json({ success: false, error: 'Internal pipeline failure' });
+    }
 });
 
 // Route 2: Confirm and Execute Credit Card Payment via SDK
@@ -120,7 +182,7 @@ app.post('/api/execute-payment', (req, res) => {
         payment_method:          'inter_credit_card',
         merchant_order: {
             merchant_order_id:   `ORD_${Date.now()}`,
-            merchant_order_time: new Date().toISOString().replace(/T/, '').replace(/\..+/, '').replace(/:/g, '').replace(/-/g, '').slice(0, 14),
+            merchant_order_time: makeTimestamp(),
             order_amount:        parsedAmount,
             order_currency_code: currency || 'USD',
             order_description:   'Yuan Way Transaction',
