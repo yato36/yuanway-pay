@@ -59,9 +59,9 @@ DQIDAQAB
 
 // ✅ تهيئة صحيحة للـ SDK: merchant_sign_key = string PKCS#8 وليس KeyObject
 const config = {
-    env:               'product',
+    env:               'sandbox', // ← تأكد أنها sandbox وليست product
     sign_type:         'RSA',
-    merchant_sign_key: PRIVATE_KEY_PEM,   // ← string الآن، وبصيغة PKCS#8
+    merchant_sign_key: PRIVATE_KEY_PEM, 
     ll_sign_key:       LL_PUBLIC_KEY_PEM,
     merchant_id:       MERCHANT_ID,
     sub_merchant_id:   SUB_MERCHANT_ID,
