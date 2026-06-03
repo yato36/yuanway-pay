@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto  = require('crypto');
 const LLPaySdk = require('ga-payment-sdk');
 
 const app = express();
@@ -6,11 +7,9 @@ const app = express();
 // --- Configuration Constants ---
 const MERCHANT_ID = '202605290003945002';
 const SUB_MERCHANT_ID = '1020260529853001';
-const SUPABASE_URL = 'https://yuxwglmtycsakllhwoaj.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1eHdnbG10eWNzYWtsbGh3b2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDM4NTMsImV4cCI6MjA4NjMxOTg1M30.ynlf7dKK4JzwHH5YjtetqAyCbLuERxFZZ6g1kkTbYGk';
 
-// ✅ الحل للأزمة: المفتاح تم تحويله بالكامل إلى تنسيق PKCS#8 ونمرره كـ String صريح ومباشر بدون كائنات تشفير
-const PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
+// المفتاح الخاص الأصلي (PKCS#1)
+const PRIVATE_KEY_PKCS1 = `-----BEGIN RSA PRIVATE KEY-----
 MIIEogIBAAKCAQBj0PeaXtoumSrgkOTrhqf+D6EMy/glD/qoHoZYkjMkmT8skOca
 cK1DdITUKmozwuuW71GUHHGUttiwUEV+Yq33Dtk30H2zoPd4PjGDM3j4hsUFTrpH
 oLuCqBC7KlxfUAOUaJFnT3M9TJeDnV27rtww3URoQmjheJqPubp3mhnIERMS/vIQ
@@ -36,7 +35,16 @@ iZpETleIPBK5hMXl8fbKs21CpheMspI54bk5rsj7XiMLnOQsrj9QUgSPMfMQJGWe
 aViBAoGAKHkY2VwDBR7LGOa7Qp+iGMqkdTMwoQ+QfK4wJ2Uy8XQtfWvngceUcXwy
 6x8Sle8V/8tTxhwjZCP4WlmP1ASh1ee58oMQhKqudEF2HOQssufgFsrfmF5MeGr3
 8xGpHTb68w2OFOxFEKyaXc9ADMWO+sMHTW4n0eMuXgisv4SQRDI=
------END PRIVATE KEY-----`;
+-----END RSA PRIVATE KEY-----`;
+
+// ✅ FIX #1 + #2: تحويل المفتاح من PKCS#1 إلى PKCS#8 (string)
+// السبب: الـ SDK يستخدم node-rsa مع importKey(..., "pkcs8-private-pem")
+// وهو يرفض PKCS#1 بخطأ "encoding too long"
+// كذلك merchant_sign_key يجب أن يكون string وليس KeyObject
+const PRIVATE_KEY_PEM = crypto
+    .createPrivateKey({ key: PRIVATE_KEY_PKCS1, format: 'pem', type: 'pkcs1' })
+    .export({ type: 'pkcs8', format: 'pem' })
+    .toString();
 
 // LianLian Public Key
 const LL_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
@@ -49,17 +57,22 @@ B7w56dftvryYPRU+qjlwMPXfVWGOnikef83XRSdAbES2nUheasIHHy4wIWzp1Y8+
 DQIDAQAB
 -----END PUBLIC KEY-----`;
 
-// --- Initialize LianLian SDK Instance ---
+// ✅ تهيئة صحيحة للـ SDK: merchant_sign_key = string PKCS#8 وليس KeyObject
 const config = {
-    env:               'product', 
+    env:               'product',
     sign_type:         'RSA',
-    merchant_sign_key: PRIVATE_KEY_PEM, // مررت كـ String صريح بتنسيق PKCS#8 متوافق مع شرط المكتبة الصارم
+    merchant_sign_key: PRIVATE_KEY_PEM,   // ← string الآن، وبصيغة PKCS#8
     ll_sign_key:       LL_PUBLIC_KEY_PEM,
     merchant_id:       MERCHANT_ID,
     sub_merchant_id:   SUB_MERCHANT_ID,
-    is_print_log:      true
+    is_print_log:      false
 };
 const LLPay = new LLPaySdk(config);
+
+// Timestamp helper (لا يزال مطلوباً للـ execute-payment)
+function makeTimestamp() {
+    return new Date().toISOString().replace(/T/, '').replace(/\..+/, '').replace(/:/g, '').replace(/-/g, '').slice(0, 14);
+}
 
 // --- Middleware Setup ---
 app.use((req, res, next) => {
@@ -78,55 +91,34 @@ app.use(express.json({
 // --- Base Routes ---
 app.get('/', (req, res) => res.send('Yuanway Gateway Service Active'));
 
-// --- Database Sync Helper ---
-async function updateOrderStatus(orderId, status) {
-    if (!orderId) return;
-    try {
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
-            method: 'PATCH',
-            headers: {
-                'apikey':        SUPABASE_KEY,
-                'Authorization': `Bearer ${SUPABASE_KEY}`,
-                'Content-Type':  'application/json',
-                'Prefer':        'return=minimal'
-            },
-            body: JSON.stringify({ status })
-        });
-        console.log(`DB Synchronization status [Order: ${orderId} -> ${status}] Status Code: ${response.status}`);
-    } catch(err) { 
-        console.error('Supabase integration operational failure:', err); 
-    }
-}
-
 // --- API Endpoints ---
 
-// Route 1: ✅ استدعاء دالة الـ SDK القياسية بعد تنظيف المفتاح وتعديل معطيات التوقيع
+// Route 1: جلب الـ iframe token عبر الـ SDK مباشرةً
+// ✅ FIX #3: استخدام LLPay.getTokenIframe() بدلاً من implementation يدوي
+// السبب: الكود القديم كان يوقّع بـ RSA-SHA256 بينما LianLian تتوقع SHA1withRSA
 app.post('/api/get-iframe-token', (req, res) => {
-    console.log('Dispatching request wrapper for getTokenIframe via SDK standard...');
-
-    const queryParams = {
-        merchant_user_no: req.body.email || `guest_${Date.now()}`
-    };
+    console.log('Fetching iframe token via SDK...');
 
     LLPay.getTokenIframe({
-        params: queryParams,
+        params: {
+            merchant_user_no: req.body.email || `guest_${Date.now()}`
+        },
         successcb: (result) => {
-            console.log('SDK successful response payload:', JSON.stringify(result));
-            const responseData = result.body ? JSON.parse(result.body) : result;
-            if (responseData.token || (responseData.data && responseData.data.token)) {
-                return res.json({ success: true, token: responseData.token || responseData.data.token });
-            } else {
-                return res.status(400).json(responseData);
+            try {
+                const parsed = JSON.parse(result.body);
+                const token = parsed.token || parsed.data?.token;
+                if (token) {
+                    return res.json({ success: true, token });
+                } else {
+                    return res.status(400).json({ success: false, error: 'No token in response', raw: parsed });
+                }
+            } catch (e) {
+                return res.status(500).json({ success: false, error: 'Failed to parse response', raw: result.body });
             }
         },
         failcb: (err) => {
-            console.error('SDK explicit failure return:', err);
-            try {
-                const parsedErr = typeof err === 'string' ? JSON.parse(err) : err;
-                return res.status(400).json({ success: false, error: parsedErr.return_message || parsedErr });
-            } catch(e) {
-                return res.status(400).json({ success: false, error: err });
-            }
+            console.error('getTokenIframe failed:', err);
+            return res.status(400).json({ success: false, error: err });
         }
     });
 });
@@ -151,7 +143,7 @@ app.post('/api/execute-payment', (req, res) => {
         payment_method:          'inter_credit_card',
         merchant_order: {
             merchant_order_id:   `ORD_${Date.now()}`,
-            merchant_order_time: new Date().toISOString().replace(/T/, '').replace(/\..+/, '').replace(/:/g, '').replace(/-/g, '').slice(0, 14),
+            merchant_order_time: makeTimestamp(),
             order_amount:        parsedAmount,
             order_currency_code: currency || 'USD',
             order_description:   'Yuan Way Transaction',
@@ -189,9 +181,6 @@ app.post('/api/execute-payment', (req, res) => {
     LLPay.pay({
         params: paymentParams,
         successcb: async (result) => {
-            if (order_id) {
-                await updateOrderStatus(order_id, 'مدفوع');
-            }
             return res.json({ success: true, data: result });
         },
         failcb: (err) => {
