@@ -10,7 +10,7 @@ const SUB_MERCHANT_ID = '1020260529853001';
 const SUPABASE_URL = 'https://yuxwglmtycsakllhwoaj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1eHdnbG10eWNzYWtsbGh3b2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDM4NTMsImV4cCI6MjA4NjMxOTg1M30.ynlf7dKK4JzwHH5YjtetqAyCbLuERxFZZ6g1kkTbYGk';
 
-// المفتاح الخاص بصيغة PKCS#8 المتوافق مع شروط الحزمة
+// المفتاح الخاص بصيغة PKCS#8 المتوافقة تماماً مع الـ SDK
 const PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
 MIIEogIBAAKCAQBj0PeaXtoumSrgkOTrhqf+D6EMy/glD/qoHoZYkjMkmT8skOca
 cK1DdITUKmozwuuW71GUHHGUttiwUEV+Yq33Dtk30H2zoPd4PjGDM3j4hsUFTrpH
@@ -50,7 +50,7 @@ B7w56dftvryYPRU+qjlwMPXfVWGOnikef83XRSdAbES2nUheasIHHy4wIWzp1Y8+
 DQIDAQAB
 -----END PUBLIC KEY-----`;
 
-// ✅ تهيئة الـ SDK للإنتاج الفعلي ليعمل متجرك فوراً
+// ✅ تهيئة الـ SDK على بيئة الإنتاج الفعلي لتوليد روابط دفع حقيقية
 const config = {
     env:               'product', 
     sign_type:         'RSA',
@@ -62,7 +62,6 @@ const config = {
 };
 const LLPay = new LLPaySdk(config);
 
-// Helper to generate current timestamp
 function makeTimestamp() {
     return new Date().toISOString().replace(/T/, '').replace(/\..+/, '').replace(/:/g, '').replace(/-/g, '').slice(0, 14);
 }
@@ -84,62 +83,54 @@ app.use(express.json({
 // --- Base Routes ---
 app.get('/', (req, res) => res.send('Yuanway Gateway Service Active'));
 
+// --- Database Sync Helper ---
+async function updateOrderStatus(orderId, status) {
+    if (!orderId) return;
+    try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
+            method: 'PATCH',
+            headers: {
+                'apikey':        SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'Content-Type':  'application/json',
+                'Prefer':        'return=minimal'
+            },
+            body: JSON.stringify({ status })
+        });
+        console.log(`DB Synchronization status [Order: ${orderId} -> ${status}] Status Code: ${response.status}`);
+    } catch(err) { 
+        console.error('Supabase integration operational failure:', err); 
+    }
+}
+
 // --- API Endpoints ---
 
-// Route 1: جلب التوكن القياسي طبقاً للمثال الصيني الموضح بالوثائق وبدون بارامترات زائدة تسبب خلل التوقيع
+// Route 1: ✅ تحويل المسار الأول ليقوم بإنشاء المعاملة وإنتاج الـ payment_url الخاص بصفحة أمين الصندوق فوراً
 app.post('/api/get-iframe-token', (req, res) => {
-    console.log('Fetching iframe token strictly matching the original SDK documentation example...');
-
-    LLPay.getTokenIframe({
-        // ✅ الاستدعاء المباشر والخالي من البارامترات طبقاً للصور الرسمية للمكتبة المرفقة
-        successcb: (result) => {
-            console.log('SDK documentation match success:', JSON.stringify(result));
-            const responseData = result.body ? JSON.parse(result.body) : result;
-            if (responseData.token || (responseData.data && responseData.data.token)) {
-                return res.json({ success: true, token: responseData.token || responseData.data.token });
-            } else {
-                return res.status(400).json(responseData);
-            }
-        },
-        failcb: (err) => {
-            console.error('SDK documentation match failure:', err);
-            try {
-                const parsedErr = typeof err === 'string' ? JSON.parse(err) : err;
-                return res.status(400).json({ success: false, error: parsedErr.return_message || parsedErr });
-            } catch(e) {
-                return res.status(400).json({ success: false, error: err });
-            }
-        }
-    });
-});
-
-// Route 2: Confirm and Execute Credit Card Payment via SDK
-app.post('/api/execute-payment', (req, res) => {
-    console.log('Dispatching request wrapper for credit card payment...');
-    const { card_token, holder_name, amount, currency, email, order_id } = req.body;
-
-    if (!card_token) return res.status(400).json({ success: false, error: 'Missing token parameter' });
-
+    console.log('Initiating Hosted Checkout Transaction (Hosted Mode)...');
+    
+    const { amount, currency, customer } = req.body;
     const currentTxnId = `TXN_${Date.now()}`;
-    const parsedAmount = parseFloat(amount) || 200.10;
+    const parsedAmount = parseFloat(amount) || 10.00;
     const clientIp     = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || '127.0.0.1';
 
+    // بناء بارامترات الدفع المستضاف طبقاً لمعايير شركة ليان ليان الدولية
     const paymentParams = {
         merchant_transaction_id: currentTxnId,
         notification_url:        'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
         redirect_url:            'https://yuanway2030.com/payment-methods.html',
         cancel_url:              'https://yuanway2030.com/payment-methods.html',
-        country:                 'US',
+        country:                 'SA', // تعيين الدولة ليتوافق مع بوابات الدفع في المملكة
         payment_method:          'inter_credit_card',
         merchant_order: {
             merchant_order_id:   `ORD_${Date.now()}`,
             merchant_order_time: makeTimestamp(),
             order_amount:        parsedAmount,
             order_currency_code: currency || 'USD',
-            order_description:   'Yuan Way Transaction',
+            order_description:   'Yuan Way Store Order',
             products: [{
                 product_id:        '101',
-                name:              'Yuanway Product Store',
+                name:              'Yuanway Product',
                 price:             parsedAmount,
                 quantity:          1,
                 url:               'https://yuanway2030.com',
@@ -147,12 +138,11 @@ app.post('/api/execute-payment', (req, res) => {
             }]
         },
         customer: {
-            customer_type: 'I', first_name: 'Yuanway', last_name: 'Customer',
-            full_name: holder_name || 'Generic Customer', email: email || 'yuanwayco@gmail.com'
-        },
-        payment_data: {
-            card: { card_token: card_token, holder_name: holder_name || 'Generic Customer' },
-            installments: 1
+            customer_type: 'I',
+            first_name:    customer?.first_name || 'Yuanway',
+            last_name:     customer?.last_name  || 'Customer',
+            full_name:     customer?.full_name  || 'Yuanway Customer',
+            email:         customer?.email      || 'yuanwayco@gmail.com'
         },
         terminal_data: {
             user_order_ip:                        clientIp,
@@ -168,23 +158,55 @@ app.post('/api/execute-payment', (req, res) => {
         }
     };
 
+    // استدعاء دالة الدفع التي تصدر حقل الـ payment_url تلقائياً
     LLPay.pay({
         params: paymentParams,
-        successcb: async (result) => {
-            return res.json({ success: true, data: result });
+        successcb: (result) => {
+            console.log('Hosted payment initialized successfully:', JSON.stringify(result));
+            const responseData = result.body ? JSON.parse(result.body) : result;
+            
+            // تمرير النتيجة لتقرأها الواجهة تلقائياً وتحول العميل لصفحة الدفع
+            return res.json({ success: true, data: responseData });
         },
         failcb: (err) => {
+            console.error('Hosted payment initialization failed:', err);
             return res.status(400).json({ success: false, error: err });
         }
     });
 });
 
+// Route 2: الدفع المباشر عبر التوكن (متروك احتياطاً للعمليات الخلفية)
+app.post('/api/execute-payment', (req, res) => {
+    return res.status(400).json({ success: false, error: 'Redirect flow active' });
+});
+
 // Route 3: Asynchronous Webhook Payment Notification Receiver via SDK Parser
 app.post('/api/webhook/lianlian', (req, res) => {
     const rawPayload = req.rawBody || JSON.stringify(req.body);
+    
     const verification = LLPay.llNotice(rawPayload, req.headers);
-    if (!verification.verifySignResult) return res.status(401).json({ return_code: 'FAIL', return_message: 'Unauthorized Signature' });
+    
+    if (!verification.verifySignResult) {
+        console.error('Rejected webhook update: Validation signature mismatch');
+        return res.status(401).json({ return_code: 'FAIL', return_message: 'Unauthorized Signature' });
+    }
+
     res.json({ return_code: 'SUCCESS', return_message: 'OK' });
+
+    const payload = req.body;
+    const gatewayStatus = payload.order_status || payload.status || '';
+    const orderId = payload.merchant_order_id || payload.order_id || null;
+
+    const statusMatrix = {
+        'SU': 'مدفوع', 'PA': 'مدفوع', 'SUCCESS': 'مدفوع',
+        'FA': 'ملغي',  'CA': 'ملغي',  'FAILED':  'ملغي', 'RE': 'ملغي'
+    };
+
+    const resolvedStatus = statusMatrix[gatewayStatus];
+    if (resolvedStatus && orderId) {
+        console.log(`Webhook job parsing complete [Order ID: ${orderId} -> Status: ${resolvedStatus}]`);
+        updateOrderStatus(orderId, resolvedStatus);
+    }
 });
 
 // --- Server Boot ---
