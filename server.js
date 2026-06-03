@@ -59,7 +59,7 @@ DQIDAQAB
 
 // ✅ تهيئة صحيحة للـ SDK: merchant_sign_key = string PKCS#8 وليس KeyObject
 const config = {
-    env:               'product',
+    env:               'sandbox',
     sign_type:         'RSA',
     merchant_sign_key: PRIVATE_KEY_PEM,   // ← string الآن، وبصيغة PKCS#8
     ll_sign_key:       LL_PUBLIC_KEY_PEM,
@@ -96,28 +96,54 @@ app.get('/', (req, res) => res.send('Yuanway Gateway Service Active'));
 // Route 1: جلب الـ iframe token عبر الـ SDK مباشرةً
 // ✅ FIX #3: استخدام LLPay.getTokenIframe() بدلاً من implementation يدوي
 // السبب: الكود القديم كان يوقّع بـ RSA-SHA256 بينما LianLian تتوقع SHA1withRSA
+// Route 1: جلب الـ iframe token مع كامل البارامترات الإلزامية لمنع الـ Decline
 app.post('/api/get-iframe-token', (req, res) => {
-    console.log('Fetching iframe token via SDK...');
+    console.log('Fetching iframe token via SDK with full parameters...');
+
+    const { amount, currency, customer } = req.body;
+    
+    // تأمين قيم افتراضية في حال نقصها لمنع فشل الطلب
+    const parsedAmount = amount ? parseFloat(amount).toFixed(2) : "10.00";
+    const userEmail = customer?.email || `guest_${Date.now()}@yuanway2030.com`;
+
+    const iframeParams = {
+        merchant_user_no: userEmail,
+        order_amount:     parsedAmount,
+        order_currency:   currency || 'USD',
+        payment_method:   'inter_credit_card', // تحديد نوع الدفع لمنع الالتباس في البوابة
+        customer: {
+            customer_type: 'I',
+            first_name:    customer?.first_name || 'Yuanway',
+            last_name:     customer?.last_name  || 'Customer',
+            full_name:     customer?.full_name  || 'Yuanway Customer',
+            email:         userEmail
+        }
+    };
 
     LLPay.getTokenIframe({
-        params: {
-            merchant_user_no: req.body.email || `guest_${Date.now()}`
-        },
+        params: iframeParams,
         successcb: (result) => {
             try {
                 const parsed = JSON.parse(result.body);
+                // البوابة أحياناً تعيد التوكن مباشرة وأحياناً داخل كائن data
                 const token = parsed.token || parsed.data?.token || parsed.order;
+                
                 if (token) {
                     return res.json({ success: true, token });
                 } else {
-                    return res.status(400).json({ success: false, error: 'No token in response', raw: parsed });
+                    console.error('LianLian Response Error Raw:', parsed);
+                    return res.status(400).json({ 
+                        success: false, 
+                        error: parsed.return_message || 'No token in response', 
+                        raw: parsed 
+                    });
                 }
             } catch (e) {
                 return res.status(500).json({ success: false, error: 'Failed to parse response', raw: result.body });
             }
         },
         failcb: (err) => {
-            console.error('getTokenIframe failed:', err);
+            console.error('getTokenIframe SDK Internal Failure:', err);
             return res.status(400).json({ success: false, error: err });
         }
     });
