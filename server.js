@@ -9,8 +9,8 @@ const SUB_MERCHANT_ID = '1020260529853001';
 const SUPABASE_URL = 'https://yuxwglmtycsakllhwoaj.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1eHdnbG10eWNzYWtsbGh3b2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDM4NTMsImV4cCI6MjA4NjMxOTg1M30.ynlf7dKK4JzwHH5YjtetqAyCbLuERxFZZ6g1kkTbYGk';
 
-// PKCS#8 RSA Private Key (Ensure it is converted to PKCS#8 if required by the SDK)
-const PRIVATE_KEY_PEM = `-----BEGIN RSA PRIVATE KEY-----
+
+const PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
 MIIEogIBAAKCAQBj0PeaXtoumSrgkOTrhqf+D6EMy/glD/qoHoZYkjMkmT8skOca
 cK1DdITUKmozwuuW71GUHHGUttiwUEV+Yq33Dtk30H2zoPd4PjGDM3j4hsUFTrpH
 oLuCqBC7KlxfUAOUaJFnT3M9TJeDnV27rtww3URoQmjheJqPubp3mhnIERMS/vIQ
@@ -36,7 +36,7 @@ iZpETleIPBK5hMXl8fbKs21CpheMspI54bk5rsj7XiMLnOQsrj9QUgSPMfMQJGWe
 aViBAoGAKHkY2VwDBR7LGOa7Qp+iGMqkdTMwoQ+QfK4wJ2Uy8XQtfWvngceUcXwy
 6x8Sle8V/8tTxhwjZCP4WlmP1ASh1ee58oMQhKqudEF2HOQssufgFsrfmF5MeGr3
 8xGpHTb68w2OFOxFEKyaXc9ADMWO+sMHTW4n0eMuXgisv4SQRDI=
------END RSA PRIVATE KEY-----`;
+-----END PRIVATE KEY-----`;
 
 // LianLian Public Key
 const LL_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
