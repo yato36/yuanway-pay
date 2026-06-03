@@ -59,7 +59,7 @@ DQIDAQAB
 
 // ✅ تهيئة صحيحة للـ SDK: merchant_sign_key = string PKCS#8 وليس KeyObject
 const config = {
-    env:               'sandbox',
+    env:               'product',
     sign_type:         'RSA',
     merchant_sign_key: PRIVATE_KEY_PEM,   // ← string الآن، وبصيغة PKCS#8
     ll_sign_key:       LL_PUBLIC_KEY_PEM,
@@ -106,7 +106,7 @@ app.post('/api/get-iframe-token', (req, res) => {
         successcb: (result) => {
             try {
                 const parsed = JSON.parse(result.body);
-                const token = parsed.token || parsed.data?.token;
+                const token = parsed.token || parsed.data?.token || parsed.order;
                 if (token) {
                     return res.json({ success: true, token });
                 } else {
