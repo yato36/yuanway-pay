@@ -105,16 +105,18 @@ app.post('/api/get-iframe-token', (req, res) => {
         merchant_order: {
             merchant_order_id:   'ORD_' + timeNow,
             merchant_order_time: ts,
-            order_amount:        amount,
+            order_amount:        parseFloat(amount), // ✅ FIX — number لا string
             order_currency_code: currency,
             order_description:   'Yuan Way Order',
             products: [{
-                product_id: '101',
-                name:       'Yuanway Product',
-                price:      amount,
-                quantity:   1,
-                url:        'https://yuanway2030.com',
-                category:   'general'
+                product_id:        '101',
+                sku:               'YW-001',        // ✅ FIX #1 — مطلوب من LianLian
+                name:              'Yuanway Product',
+                price:             parseFloat(amount), // ✅ FIX #2 — number لا string
+                quantity:          1,
+                url:               'https://yuanway2030.com',
+                category:          'general',
+                shipping_provider: 'other'          // ✅ FIX #3 — مطلوب لبطاقة الائتمان
             }]
         },
         customer: {                            // ✅ تغيير payer إلى customer كما في وثائق LianLian
