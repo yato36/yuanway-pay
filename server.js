@@ -71,6 +71,9 @@ function generateSignature(merchantId, timestamp, bodyString) {
 // ─────────────────────────────────────────────────────────────
 // 🎯 المسار المحدث: جلب الـ token الصحيح للإطار (Elements)
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// 🎯 المسار المحدث: جلب الـ token الصحيح للإطار (Elements)
+// ─────────────────────────────────────────────────────────────
 app.post('/api/get-iframe-token', async (req, res) => {
     console.log('📥 get-iframe-token (Elements API) | amount:', req.body.amount);
 
@@ -117,8 +120,11 @@ app.post('/api/get-iframe-token', async (req, res) => {
         const timestamp = Math.floor(Date.now() / 1000).toString();
         const signature = generateSignature(MERCHANT_ID, timestamp, bodyString);
 
-        // إرسال الطلب مباشرة إلى رابط الـ Elements في البيئة التجريبية (Sandbox)
-        const lianlianUrl = `https://test-gateway.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments/elements`;
+        // ✅ تم تحديث الرابط هنا إلى الرابط الرسمي للبيئة التجريبية (Sandbox)
+        const lianlianUrl = `https://gpaymentapi-sandbox.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments/elements`;
+        
+        // ملاحظة: عند الانتقال للبيئة الحقيقية (Production) مستقبلاً، استخدم الرابط التالي بدلاً من السابق:
+        // const lianlianUrl = `https://gpaymentapi.lianlianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments/elements`;
 
         const response = await fetch(lianlianUrl, {
             method: 'POST',
