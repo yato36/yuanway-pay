@@ -95,31 +95,32 @@ app.post('/api/get-iframe-token', (req, res) => {
     const currency = req.body.currency || 'USD';
     const email    = req.body.email    || 'yuanwayco@gmail.com';
 
-    // ✅ params كاملة تشمل payment_method الضروري لكي يشتغل SDK
+    // ─── Iframe/Hosted-Fields flow ───────────────────────────────────────────────
+    // ❌ payment_method: 'inter_credit_card' يُعامَل كـ direct-charge ويشترط card_no
+    // ✅ بدون payment_method يرجع LianLian credential_token للـ iframe
     const customerData = req.body.customer || {};
     const params = {
         merchant_transaction_id: 'TXN_' + timeNow,
         notification_url: 'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
         country: 'US',
-        payment_method: 'inter_credit_card',   // ✅ مطلوب لـ confirmPay() في الـ SDK
         merchant_order: {
             merchant_order_id:   'ORD_' + timeNow,
             merchant_order_time: ts,
-            order_amount:        parseFloat(amount), // ✅ FIX — number لا string
+            order_amount:        parseFloat(amount),
             order_currency_code: currency,
             order_description:   'Yuan Way Order',
             products: [{
                 product_id:        '101',
-                sku:               'YW-001',        // ✅ FIX #1 — مطلوب من LianLian
+                sku:               'YW-001',
                 name:              'Yuanway Product',
-                price:             parseFloat(amount), // ✅ FIX #2 — number لا string
+                price:             parseFloat(amount),
                 quantity:          1,
                 url:               'https://yuanway2030.com',
                 category:          'general',
-                shipping_provider: 'other'          // ✅ FIX #3 — مطلوب لبطاقة الائتمان
+                shipping_provider: 'other'
             }]
         },
-        customer: {                            // ✅ تغيير payer إلى customer كما في وثائق LianLian
+        customer: {
             customer_type: 'I',
             first_name:    customerData.first_name || 'Customer',
             last_name:     customerData.last_name  || 'User',
