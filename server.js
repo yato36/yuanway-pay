@@ -96,8 +96,20 @@ function makeTs() {
     return `${n.getUTCFullYear()}${p(n.getUTCMonth()+1)}${p(n.getUTCDate())}${p(n.getUTCHours())}${p(n.getUTCMinutes())}${p(n.getUTCSeconds())}`;
 }
 
-function sign(bodyString, timestamp) {
+function sign(bodyObject, timestamp) {
+    // 1. ترتيب مفاتيح الـ body أبجدياً
+    const sortedKeys = Object.keys(bodyObject).sort();
+    const sortedBody = {};
+    sortedKeys.forEach(key => { sortedBody[key] = bodyObject[key]; });
+
+    // 2. تحويل الـ body المرتب إلى نص JSON (بدون مسافات)
+    const bodyString = JSON.stringify(sortedBody);
+    
+    // 3. بناء سلسلة التوقيع
     const data = `${MERCHANT_ID}&${timestamp}&${bodyString}`;
+    
+    console.log("📝 String to sign:", data); // مفيد جداً للمطابقة لاحقاً
+    
     return crypto.createSign('RSA-SHA256').update(data).sign(PRIVATE_KEY_PEM, 'base64');
 }
 
@@ -125,18 +137,15 @@ function llHeaders(bodyString) {
 // يرجع { token: "..." } للاستخدام في LLP.elements().create('card', { token })
 // ══════════════════════════════════════════════════════
 app.post('/api/get-iframe-token', async (req, res) => {
-    console.log('📥 get-iframe-token');
-
-    // استخدم بياناتك الحقيقية هنا
-    const MERCHANT_ID = '202605290003945002'; // رقم التاجر الخاص بك
-    const SUB_MERCHANT_ID = '1020260529853001'; // رقم التاجر الفرعي (Site ID) الخاص بك
-
-    const body = {
-        merchant_id:      MERCHANT_ID,
-        sub_merchant_id:  SUB_MERCHANT_ID,
-        merchant_user_no: req.body.email || 'guest_' + Date.now()
+    const ts = makeTs();
+    const bodyObj = {
+        merchant_id:      '202605290003945002',
+        merchant_user_no: req.body.email || 'guest_' + Date.now(),
+        sub_merchant_id:  '1020260529853001'
     };
-    const bodyStr = JSON.stringify(body);
+    
+    // التوقيع يتم باستخدام الكائن المرتب
+    const signature = sign(bodyObj, ts);
 
     try {
         
