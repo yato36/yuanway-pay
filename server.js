@@ -7,9 +7,11 @@ const app = express();
 // --- Configuration Constants ---
 const MERCHANT_ID = '202605290003945002';
 const SUB_MERCHANT_ID = '1020260529853001';
+const SUPABASE_URL = 'https://yuxwglmtycsakllhwoaj.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1eHdnbG10eWNzYWtsbGh3b2FqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDM4NTMsImV4cCI6MjA4NjMxOTg1M30.ynlf7dKK4JzwHH5YjtetqAyCbLuERxFZZ6g1kkTbYGk';
 
-// المفتاح الخاص الأصلي (PKCS#1)
-const PRIVATE_KEY_PKCS1 = `-----BEGIN RSA PRIVATE KEY-----
+// المفتاح الخاص بصيغة PKCS#8 المباشرة للنظام
+const PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
 MIIEogIBAAKCAQBj0PeaXtoumSrgkOTrhqf+D6EMy/glD/qoHoZYkjMkmT8skOca
 cK1DdITUKmozwuuW71GUHHGUttiwUEV+Yq33Dtk30H2zoPd4PjGDM3j4hsUFTrpH
 oLuCqBC7KlxfUAOUaJFnT3M9TJeDnV27rtww3URoQmjheJqPubp3mhnIERMS/vIQ
@@ -35,18 +37,8 @@ iZpETleIPBK5hMXl8fbKs21CpheMspI54bk5rsj7XiMLnOQsrj9QUgSPMfMQJGWe
 aViBAoGAKHkY2VwDBR7LGOa7Qp+iGMqkdTMwoQ+QfK4wJ2Uy8XQtfWvngceUcXwy
 6x8Sle8V/8tTxhwjZCP4WlmP1ASh1ee58oMQhKqudEF2HOQssufgFsrfmF5MeGr3
 8xGpHTb68w2OFOxFEKyaXc9ADMWO+sMHTW4n0eMuXgisv4SQRDI=
------END RSA PRIVATE KEY-----`;
+-----END PRIVATE KEY-----`;
 
-// ✅ FIX #1 + #2: تحويل المفتاح من PKCS#1 إلى PKCS#8 (string)
-// السبب: الـ SDK يستخدم node-rsa مع importKey(..., "pkcs8-private-pem")
-// وهو يرفض PKCS#1 بخطأ "encoding too long"
-// كذلك merchant_sign_key يجب أن يكون string وليس KeyObject
-const PRIVATE_KEY_PEM = crypto
-    .createPrivateKey({ key: PRIVATE_KEY_PKCS1, format: 'pem', type: 'pkcs1' })
-    .export({ type: 'pkcs8', format: 'pem' })
-    .toString();
-
-// LianLian Public Key
 const LL_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAj8z935LpCyhonQ8siJC7
 ihx5ENfsq9Ta+O6YjkzfGEMjoIJCaphJ9DPFipHZU5Xb1C2SUL81kady+xMbE2/s
@@ -57,9 +49,9 @@ B7w56dftvryYPRU+qjlwMPXfVWGOnikef83XRSdAbES2nUheasIHHy4wIWzp1Y8+
 DQIDAQAB
 -----END PUBLIC KEY-----`;
 
-// ✅ تهيئة صحيحة للـ SDK: merchant_sign_key = string PKCS#8 وليس KeyObject
+// تهيئة الـ SDK للمسارات الأخرى فقط
 const config = {
-    env:               'sandbox', // ← تأكد أنها sandbox وليست product
+    env:               'product', 
     sign_type:         'RSA',
     merchant_sign_key: PRIVATE_KEY_PEM, 
     ll_sign_key:       LL_PUBLIC_KEY_PEM,
@@ -69,9 +61,24 @@ const config = {
 };
 const LLPay = new LLPaySdk(config);
 
-// Timestamp helper (لا يزال مطلوباً للـ execute-payment)
+// --- مساعدات التوقيع والوقت القياسي الفعلي بـ SHA1 القياسي للبوابة ---
 function makeTimestamp() {
     return new Date().toISOString().replace(/T/, '').replace(/\..+/, '').replace(/:/g, '').replace(/-/g, '').slice(0, 14);
+}
+
+function generateLianLianSHA1Signature(bodyObject, timestamp) {
+    const sortedKeys = Object.keys(bodyObject).sort(); 
+    let bodyString = '{';
+    sortedKeys.forEach((key, index) => {
+        bodyString += `"${key}":"${bodyObject[key]}"` + (index < sortedKeys.length - 1 ? ',' : '');
+    });
+    bodyString += '}';
+
+    // البنية القياسية للتوقيع المكتشفة في لغات البوابة الأخرى
+    const dataToSign = `${MERCHANT_ID}&${timestamp}&${bodyString}`;
+    
+    // ✅ الاستخدام الصارم لخوارزمية RSA-SHA1 كما تتوقعها خوادم المطورين لديهم
+    return crypto.createSign('RSA-SHA1').update(dataToSign).sign(PRIVATE_KEY_PEM, 'base64');
 }
 
 // --- Middleware Setup ---
@@ -88,39 +95,54 @@ app.use(express.json({
     verify: (req, res, buf) => { req.rawBody = buf.toString(); }
 }));
 
-// --- Base Routes ---
 app.get('/', (req, res) => res.send('Yuanway Gateway Service Active'));
 
 // --- API Endpoints ---
 
-// Route 1: جلب الـ iframe token عبر الـ SDK مباشرةً
-// ✅ FIX #3: استخدام LLPay.getTokenIframe() بدلاً من implementation يدوي
-// السبب: الكود القديم كان يوقّع بـ RSA-SHA256 بينما LianLian تتوقع SHA1withRSA
-app.post('/api/get-iframe-token', (req, res) => {
-    console.log('Fetching iframe token via SDK...');
+// Route 1: ✅ تجاوز الـ SDK المكسور والاتصال المباشر بـ POST الفعلي الموضح في صورتك الحالية
+app.post('/api/get-iframe-token', async (req, res) => {
+    console.log('Dispatching official POST request for token based on new documentation image...');
 
-    LLPay.getTokenIframe({
-        params: {
-            merchant_user_no: req.body.email || `guest_${Date.now()}`
-        },
-        successcb: (result) => {
-            try {
-                const parsed = JSON.parse(result.body);
-                const token = parsed.token || parsed.data?.token || parsed.order;
-                if (token) {
-                    return res.json({ success: true, token });
-                } else {
-                    return res.status(400).json({ success: false, error: 'No token in response', raw: parsed });
-                }
-            } catch (e) {
-                return res.status(500).json({ success: false, error: 'Failed to parse response', raw: result.body });
-            }
-        },
-        failcb: (err) => {
-            console.error('getTokenIframe failed:', err);
-            return res.status(400).json({ success: false, error: err });
+    const payload = {
+        merchant_id:      MERCHANT_ID,
+        merchant_user_no: req.body.email || `guest_${Date.now()}`,
+        sub_merchant_id:  SUB_MERCHANT_ID
+    };
+
+    const timestamp = makeTimestamp();
+    const signature = generateLianLianSHA1Signature(payload, timestamp);
+
+    try {
+        // الروابط المباشرة الصحيحة المأخوذة من صورتك الحالية للـ Production الفعلي ليعمل متجرك فوراً
+        const endpoint = `https://gpapi.lianlianpay.com/v3/merchants/${MERCHANT_ID}/token`;
+        
+        const response = await fetch(endpoint, {
+            method: 'POST', // تطبيق شرط الـ POST الفعلي المتواجد في الصورة!
+            headers: {
+                'signature':     signature,
+                'timestamp':     timestamp,
+                'timezone':      'UTC',
+                'content-type':  'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        console.log('Official Gateway Response:', JSON.stringify(result));
+
+        // قراءة التوكن الحقيقي من الحقل المخصص له طبقاً للمستندات الشغالة
+        const token = result.token || result.data?.token;
+
+        if (token) {
+            return res.json({ success: true, token: token });
+        } else {
+            return res.status(400).json({ success: false, error: result.return_message || 'Declined', raw: result });
         }
-    });
+
+    } catch(err) {
+        console.error('Fatal Direct Connection Failure:', err);
+        return res.status(500).json({ success: false, error: 'Connection Failed' });
+    }
 });
 
 // Route 2: Confirm and Execute Credit Card Payment via SDK
