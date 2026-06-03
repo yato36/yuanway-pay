@@ -107,7 +107,7 @@ app.post('/api/get-iframe-token', (req, res) => {
     const userEmail = customer?.email || `guest_${Date.now()}@yuanway2030.com`;
 
     const iframeParams = {
-        merchant_user_no: `user_${crypto.createHash('md5').update(userEmail).digest('hex').slice(0,16)}`,
+        merchant_user_no: userEmail,
         order_amount:     parsedAmount,
         order_currency:   currency || 'USD',
         payment_method:   'inter_credit_card', // تحديد نوع الدفع لمنع الالتباس في البوابة
@@ -175,6 +175,7 @@ app.post('/api/execute-payment', (req, res) => {
             order_description:   'Yuan Way Transaction',
             products: [{
                 product_id:        '101',
+                sku:               'SKU-101',
                 name:              'Yuanway Product Store',
                 price:             parsedAmount,
                 quantity:          1,
