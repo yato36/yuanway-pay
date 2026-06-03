@@ -136,7 +136,7 @@ app.post('/api/get-iframe-token', async (req, res) => {
     try {
         // ✅ الـ endpoint الصحيح حسب LianLian Support
         // التعديل هنا: استخدام /token بدلاً من /payments/elements
-         const url = `https://celer-api.LianLianpay-inc.com/v3/merchants/<merchant_id>/token`;
+         const url = `https://celer-api.LianLianpay-inc.com/v3/merchants/${MERCHANT_ID}/payments/elements`;
         const response = await fetch(url, {
             method:  'POST',
             headers: llHeaders(bodyStr),
