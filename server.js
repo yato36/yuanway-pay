@@ -18,25 +18,25 @@ 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
-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
+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
++sMHTW4n0eMuXgisv4SQRDI=
 -----END PRIVATE KEY-----`;
 
 // LianLian Public Key
@@ -50,7 +50,7 @@ B7w56dftvryYPRU+qjlwMPXfVWGOnikef83XRSdAbES2nUheasIHHy4wIWzp1Y8+
 DQIDAQAB
 -----END PUBLIC KEY-----`;
 
-// ✅ التعديل الحاسم: تهيئة الـ SDK على بيئة الـ sandbox بناءً على تعليمات الشركة الحالية للاختبار
+// تهيئة الـ SDK على بيئة الـ sandbox للاختبار الآمن
 const config = {
     env:               'sandbox', 
     sign_type:         'RSA',
@@ -87,7 +87,7 @@ app.get('/', (req, res) => res.send('Yuanway Gateway Service Active'));
 async function updateOrderStatus(orderId, status) {
     if (!orderId) return;
     try {
-        const response = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
+        await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${orderId}`, {
             method: 'PATCH',
             headers: {
                 'apikey':        SUPABASE_KEY,
@@ -97,7 +97,6 @@ async function updateOrderStatus(orderId, status) {
             },
             body: JSON.stringify({ status })
         });
-        console.log(`DB Synchronization status [Order: ${orderId} -> ${status}] Status Code: ${response.status}`);
     } catch(err) { 
         console.error('Supabase integration operational failure:', err); 
     }
@@ -105,38 +104,52 @@ async function updateOrderStatus(orderId, status) {
 
 // --- API Endpoints ---
 
-// Route 1: ✅ جلب الـ Iframe Token ومعالجة رد الـ Sandbox بنجاح
+// Route 1: ✅ مسار التوكن المحصن بالكامل ضد الانهيار (Crash Safe)
 app.post('/api/get-iframe-token', (req, res) => {
-    console.log('Fetching iframe token via SDK Sandbox...');
+    console.log('Fetching iframe token safely via SDK...');
 
-    LLPay.getTokenIframe({
-        successcb: (result) => {
-            try {
-                const parsed = JSON.parse(result.body);
-                // التقاط التوكن من حقل الـ order المميز لبيئة الاختبار في البوابة
-                const token = parsed.order || parsed.token || parsed.data?.token;
-                
-                if (token) {
-                    console.log('Successfully captured Sandbox token:', token);
-                    return res.json({ success: true, token: token });
-                } else {
-                    return res.status(400).json({ success: false, error: 'No token found in response', raw: parsed });
-                }
-            } catch (e) {
-                return res.status(500).json({ success: false, error: 'Failed to parse gateway response', raw: result.body });
+    try {
+        // تمرير كائن بارامترات فارغ ومغلف لتجنب استثناءات الـ SDK الداخلي في بعض الإصدارات
+        const requestParams = {
+            params: {
+                merchant_user_no: req.body.customer?.email || `guest_${Date.now()}`
             }
-        },
-        failcb: (err) => {
-            console.error('getTokenIframe failed:', err);
-            return res.status(400).json({ success: false, error: err });
-        }
-    });
+        };
+
+        LLPay.getTokenIframe({
+            ...requestParams,
+            successcb: (result) => {
+                try {
+                    console.log("Gateway success callback hit.");
+                    const responseData = typeof result.body === 'string' ? JSON.parse(result.body) : result;
+                    const token = responseData.order || responseData.token || responseData.data?.token;
+                    
+                    if (token) {
+                        return res.json({ success: true, token: token });
+                    } else {
+                        return res.status(400).json({ success: false, error: 'Token missing from response', raw: responseData });
+                    }
+                } catch (parseError) {
+                    return res.status(500).json({ success: false, error: 'Parsing failure', raw: result.body });
+                }
+            },
+            failcb: (err) => {
+                console.error('SDK inside callback failure:', err);
+                return res.status(400).json({ success: false, error: err });
+            }
+        });
+
+    } catch (fatalError) {
+        // حماية السيرفر من الانهيار (خطأ 500) وإخراج تفاصيل الخطأ بوضوح في الـ Logs
+        console.error('Caught fatal exception to prevent crash:', fatalError.message);
+        return res.status(500).json({ success: false, error: 'Internal SDK Crash Caught', message: fatalError.message });
+    }
 });
 
 // Route 2: تأكيد ومعالجة عملية الدفع الفعلي للبطاقة بعد ملء الخانات
 app.post('/api/execute-payment', (req, res) => {
     console.log('Dispatching request wrapper for credit card payment...');
-    const { card_token, holder_name, amount, currency, email } = req.body;
+    const { card_token, holder_name, amount, currency } = req.body;
 
     if (!card_token) return res.status(400).json({ success: false, error: 'Missing token parameter' });
 
@@ -168,7 +181,7 @@ app.post('/api/execute-payment', (req, res) => {
         },
         customer: {
             customer_type: 'I', first_name: 'Yuanway', last_name: 'Customer',
-            full_name: holder_name || 'Generic Customer', email: email || 'yuanwayco@gmail.com'
+            full_name: holder_name || 'Generic Customer', email: 'yuanwayco@gmail.com'
         },
         payment_data: {
             card: { card_token: card_token, holder_name: holder_name || 'Generic Customer' },
