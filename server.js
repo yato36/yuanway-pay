@@ -223,9 +223,24 @@ app.post('/api/execute-payment', (req, res) => {
 
 // Route 3: Asynchronous Webhook Payment Notification Receiver
 app.post('/api/webhook/lianlian', (req, res) => {
-    console.log('Webhook received:', JSON.stringify(req.body));
-    // قبول كل الطلبات في بيئة الـ sandbox
-    res.json({ return_code: 'SUCCESS', return_message: 'OK' });
+    console.log('📩 Webhook received body:', JSON.stringify(req.body));
+    console.log('📩 Webhook received headers:', JSON.stringify(req.headers));
+    
+    try {
+        const rawPayload = req.rawBody || JSON.stringify(req.body);
+        const verification = LLPay.llNotice(rawPayload, req.headers);
+        console.log('✅ Webhook verification result:', verification);
+        
+        if (!verification.verifySignResult) {
+            console.error('❌ Signature verification failed');
+            // في حالة فشل التحقق نرجع success على أي حال في الـ sandbox
+        }
+    } catch(e) {
+        console.error('Webhook verification error:', e.message);
+    }
+    
+    // LianLian تتوقع هذا الرد بالضبط
+    res.json({ code: '200', message: 'success' });
 });
 
 // --- Server Boot ---
