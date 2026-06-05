@@ -2,12 +2,7 @@ const express  = require('express');
 const crypto   = require('crypto');
 const LLPaySdk = require('ga-payment-sdk');
 
-// ============================================================
-// Supabase — أضف في Railway:
-//   SUPABASE_URL        = https://xxxx.supabase.co
-//   SUPABASE_SERVICE_KEY = eyJhbGci...  (service_role key)
-// وفي orders table أضف عمود: transaction_id text
-// ============================================================
+
 let supabase = null;
 try {
     const { createClient } = require('@supabase/supabase-js');
@@ -97,10 +92,13 @@ function parseLLBody(result) {
 // HELPER: extract 3DS redirect URL from any response shape
 function extract3DSUrl(parsed) {
     return parsed.redirect_url
+        || parsed.payment_url
         || parsed.payment_redirect_url
         || parsed.data?.redirect_url
+        || parsed.data?.payment_url
         || parsed.payment?.redirect_url
         || parsed.result?.redirect_url
+        || parsed.order?.payment_url
         || null;
 }
 
@@ -314,6 +312,28 @@ app.post('/api/execute-payment', (req, res) => {
                     redirect_url:      redirectUrl,
                     transaction_id:    currentTxnId,
                     data:              parsed
+                });
+            }
+
+            // ✅ دفع ناجح مباشرة بدون 3DS
+            // ✅ التحقق من حالة الدفع لتجنب النجاح الوهمي
+            const returnCode = String(parsed.return_code || parsed.code || '').toUpperCase();
+            const status = String(parsed.status || parsed.payment_status || '').toUpperCase();
+            
+            if (returnCode && returnCode !== '000000' && returnCode !== '200' && returnCode !== '0000') {
+                console.error('[execute-payment] Payment declined or error:', returnCode);
+                return res.json({
+                    success: false,
+                    error: parsed.return_message || parsed.message || 'لم تكتمل عملية الدفع، يرجى المحاولة مرة أخرى.',
+                    data: parsed
+                });
+            }
+
+            if (status === 'WAITING_PAYMENT' || status === 'PENDING' || status === 'WAITING') {
+                return res.json({
+                    success: false,
+                    error: 'العملية معلقة بانتظار التحقق من البنك. تأكد من إكمال التحقق.',
+                    data: parsed
                 });
             }
 
