@@ -1,16 +1,37 @@
-const express = require('express');
-const crypto  = require('crypto');
+const express  = require('express');
+const crypto   = require('crypto');
 const LLPaySdk = require('ga-payment-sdk');
+
+// ============================================================
+// Supabase — أضف في Railway:
+//   SUPABASE_URL        = https://xxxx.supabase.co
+//   SUPABASE_SERVICE_KEY = eyJhbGci...  (service_role key)
+// وفي orders table أضف عمود: transaction_id text
+// ============================================================
+let supabase = null;
+try {
+    const { createClient } = require('@supabase/supabase-js');
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+        supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_KEY
+        );
+        console.log('✅ Supabase client initialized');
+    } else {
+        console.warn('⚠️  SUPABASE_URL أو SUPABASE_SERVICE_KEY غير موجودة — الـ webhook لن يحدّث الطلبات');
+    }
+} catch (e) {
+    console.warn('⚠️  @supabase/supabase-js غير مثبّت — نفّذ: npm install @supabase/supabase-js');
+}
 
 const app = express();
 
 // ============================================================
-// 🔴 PRODUCTION CREDENTIALS — تأكد من هذه القيم
+// PRODUCTION CREDENTIALS
 // ============================================================
-const MERCHANT_ID     = '202605180005016003';   // Primary Merchant ID
-const SUB_MERCHANT_ID = '1020260518350007';      // Secondary Merchant ID (Store ID)
+const MERCHANT_ID     = '202605180005016003';
+const SUB_MERCHANT_ID = '1020260518350007';
 
-// مفتاحك الخاص — لا تغيره
 const PRIVATE_KEY_PEM = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQD1eRKgqs54pxVg
 5gY+O6sufVk2lif1T3lAxs7byjwJ5M+rHADkT9lI7QvOLKiDb5mIfcVzNw0an6pu
@@ -40,11 +61,6 @@ y2BkwX/3A18fDqEaCUXzohXxHCoYuvQiRlBOZxX5EDdclSyXACGdTAXhkXI/2j7V
 PQjIP6pDV4bsj4wlF8Sd2q8=
 -----END PRIVATE KEY-----`;
 
-// ============================================================
-// 🔴 مهم جداً: هذا هو LianLian Public Key من البيئة الحقيقية
-// اذهب إلى: acquiring.lianlianpay.com > Developer management > RSA Key
-// وانسخ "LianLianPay public key" وضعه هنا بدل هذا
-// ============================================================
 const LL_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4IuEplVKAYsWgFPPwvEz
 /nb6Ktz2RJwk1elmrNrn220ACM95Q8s2jLIlFM2CBfSwyPtyUJQxXOzMyKFIHOkd
@@ -54,25 +70,49 @@ Msw7ySFJD7H11u9ypklz3dduSrXcMUOArMsNAvhw0IhYWAaCqftsSMa5giOlT7uU
 y44VDaEvWBsYLPX4AkcJydD2uzAoryyCuB2MWQavoMWyj0IMZ+EjhW6qoCgMdJM3
 ZQIDAQAB
 -----END PUBLIC KEY-----`;
-// NOTE: إذا ما اشتغل الدفع، هذا المفتاح يحتاج تحديث من لوحة التحكم الحقيقية
 
 const config = {
-    env:               'product',   // ✅ البيئة الحقيقية
+    env:               'product',
     sign_type:         'RSA',
     merchant_sign_key: PRIVATE_KEY_PEM,
     ll_sign_key:       LL_PUBLIC_KEY_PEM,
     merchant_id:       MERCHANT_ID,
     sub_merchant_id:   SUB_MERCHANT_ID,
-    is_print_log:      true  // شغّل الـ log مؤقتاً للتشخيص
+    is_print_log:      true
 };
 const LLPay = new LLPaySdk(config);
 
+// ============================================================
+// HELPER: parse LianLian SDK response body
+// ============================================================
+function parseLLBody(result) {
+    if (!result) return {};
+    if (typeof result.body === 'string') {
+        try { return JSON.parse(result.body); } catch(e) { return {}; }
+    }
+    if (typeof result === 'object') return result;
+    return {};
+}
+
+// HELPER: extract 3DS redirect URL from any response shape
+function extract3DSUrl(parsed) {
+    return parsed.redirect_url
+        || parsed.payment_redirect_url
+        || parsed.data?.redirect_url
+        || parsed.payment?.redirect_url
+        || parsed.result?.redirect_url
+        || null;
+}
+
+// HELPER: timestamp for LianLian
 function makeTimestamp() {
-    return new Date().toISOString().replace(/T/, '').replace(/\..+/, '').replace(/:/g, '').replace(/-/g, '').slice(0, 14);
+    return new Date().toISOString()
+        .replace(/[-T:.Z]/g, '')
+        .slice(0, 14);
 }
 
 // ============================================================
-// CORS — مُصلَح لـ Railway + yuanway2030.com
+// CORS
 // ============================================================
 const ALLOWED_ORIGINS = [
     'https://yuanway2030.com',
@@ -84,22 +124,15 @@ const ALLOWED_ORIGINS = [
 
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    
-    // السماح لأي origin في الـ whitelist، أو أي طلب بدون origin (server-to-server)
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin || '*');
     } else {
-        // في الإنتاج، يمكنك إزالة هذا السطر لمنع الطلبات الغريبة
         res.setHeader('Access-Control-Allow-Origin', origin);
     }
-    
     res.setHeader('Access-Control-Allow-Methods',     'GET, POST, OPTIONS, PUT, DELETE');
     res.setHeader('Access-Control-Allow-Headers',     'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
+    if (req.method === 'OPTIONS') return res.status(200).end();
     next();
 });
 
@@ -107,16 +140,18 @@ app.use(express.json({
     verify: (req, res, buf) => { req.rawBody = buf.toString(); }
 }));
 
-// Health check
+// ============================================================
+// HEALTH CHECK
+// ============================================================
 app.get('/', (req, res) => res.json({
-    status: 'active',
-    env: 'production',
-    merchant_id: MERCHANT_ID,
+    status:          'active',
+    env:             'production',
+    merchant_id:     MERCHANT_ID,
     sub_merchant_id: SUB_MERCHANT_ID,
-    timestamp: new Date().toISOString()
+    supabase:        supabase ? 'connected' : 'not configured',
+    timestamp:       new Date().toISOString()
 }));
 
-// Webhook GET check
 app.get('/api/webhook/lianlian', (req, res) => {
     res.json({ status: 'webhook endpoint active', timestamp: new Date().toISOString() });
 });
@@ -126,15 +161,16 @@ app.get('/api/webhook/lianlian', (req, res) => {
 // ============================================================
 app.post('/api/get-iframe-token', (req, res) => {
     const { amount, currency, customer } = req.body;
-    const parsedAmount = amount ? parseFloat(amount).toFixed(2) : "10.00";
-    const userEmail = customer?.email || `guest_${Date.now()}@yuanway2030.com`;
+    const parsedAmount = amount ? parseFloat(amount).toFixed(2) : '10.00';
+    const usedCurrency = currency || 'SAR'; // ✅ SAR افتراضي
+    const userEmail    = customer?.email || `guest_${Date.now()}@yuanway2030.com`;
 
-    console.log(`[get-iframe-token] amount=${parsedAmount} currency=${currency || 'USD'} email=${userEmail}`);
+    console.log(`[get-iframe-token] amount=${parsedAmount} currency=${usedCurrency} email=${userEmail}`);
 
     const iframeParams = {
         merchant_user_no: userEmail,
         order_amount:     parsedAmount,
-        order_currency:   currency || 'USD',
+        order_currency:   usedCurrency,
         payment_method:   'inter_credit_card',
         customer: {
             customer_type: 'I',
@@ -149,21 +185,16 @@ app.post('/api/get-iframe-token', (req, res) => {
         params: iframeParams,
         successcb: (result) => {
             console.log('[get-iframe-token] raw response:', result.body);
-            try {
-                const parsed = JSON.parse(result.body);
-                const token = parsed.token || parsed.data?.token || parsed.order;
-                if (token) {
-                    return res.json({ success: true, token });
-                } else {
-                    return res.status(400).json({
-                        success: false,
-                        error: parsed.return_message || 'No token in response',
-                        raw: parsed
-                    });
-                }
-            } catch (e) {
-                return res.status(500).json({ success: false, error: 'Parse error', raw: result.body });
+            const parsed = parseLLBody(result);
+            const token  = parsed.token || parsed.data?.token || parsed.order;
+            if (token) {
+                return res.json({ success: true, token });
             }
+            return res.status(400).json({
+                success: false,
+                error:   parsed.return_message || 'No token in response',
+                raw:     parsed
+            });
         },
         failcb: (err) => {
             console.error('[get-iframe-token] fail:', err);
@@ -173,30 +204,57 @@ app.post('/api/get-iframe-token', (req, res) => {
 });
 
 // ============================================================
-// EXECUTE PAYMENT
+// EXECUTE PAYMENT — ✅ مع دعم 3DS كامل
 // ============================================================
 app.post('/api/execute-payment', (req, res) => {
-    const { card_token, holder_name, amount, currency, email } = req.body;
-    if (!card_token) return res.status(400).json({ success: false, error: 'Missing token' });
+    const {
+        card_token,
+        holder_name,
+        amount,
+        currency,
+        email,
+        browser_data, // ✅ بيانات المتصفح الحقيقية من الفرونت
+        order_id      // ✅ اختياري: Supabase order ID لربطه بالـ txn
+    } = req.body;
 
-    const currentTxnId = `TXN_${Date.now()}`;
-    const parsedAmount = parseFloat(amount) || 10.00;
-    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || '127.0.0.1';
+    if (!card_token) {
+        return res.status(400).json({ success: false, error: 'Missing card_token' });
+    }
 
-    console.log(`[execute-payment] txn=${currentTxnId} amount=${parsedAmount} ip=${clientIp}`);
+    const currentTxnId  = `TXN_${Date.now()}`;
+    const parsedAmount  = parseFloat(amount) || 10.00;
+    const usedCurrency  = currency || 'SAR'; // ✅ SAR افتراضي
+    const clientIp      = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || '127.0.0.1';
+
+    console.log(`[execute-payment] txn=${currentTxnId} amount=${parsedAmount} currency=${usedCurrency} ip=${clientIp} order_id=${order_id || 'N/A'}`);
+
+    // ✅ بيانات المتصفح — استخدم الحقيقية من الفرونت إذا وُجدت
+    const bd = browser_data || {};
+    const terminalData = {
+        user_order_ip:                        clientIp,
+        user_client_browser_accept_header:    bd.accept_header    || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        user_client_browser_color_depth:      parseInt(bd.color_depth)  || 24,
+        user_client_browser_java_enabled:     false,
+        user_client_browser_js_enabled:       true,
+        user_client_browser_language:         bd.language         || 'ar-SA',
+        user_client_browser_screen_height:    parseInt(bd.screen_height) || 900,
+        user_client_browser_screen_width:     parseInt(bd.screen_width)  || 390,
+        user_client_browser_time_zone_offset: bd.tz_offset        || '180',
+        user_client_browser_user_agent:       bd.user_agent       || 'Mozilla/5.0 (compatible)'
+    };
 
     const paymentParams = {
         merchant_transaction_id: currentTxnId,
         notification_url:        'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
         redirect_url:            'https://yuanway2030.com/payment-methods.html',
         cancel_url:              'https://yuanway2030.com/payment-methods.html',
-        country:                 'US',
+        country:                 'SA',    // ✅ كان 'US' — السعودية
         payment_method:          'inter_credit_card',
         merchant_order: {
             merchant_order_id:   `ORD_${Date.now()}`,
             merchant_order_time: makeTimestamp(),
             order_amount:        parsedAmount,
-            order_currency_code: currency || 'USD',
+            order_currency_code: usedCurrency,
             order_description:   'Yuan Way Transaction',
             products: [{
                 product_id:        '101',
@@ -213,47 +271,121 @@ app.post('/api/execute-payment', (req, res) => {
             first_name:    'Yuanway',
             last_name:     'Customer',
             full_name:     holder_name || 'Generic Customer',
-            email:         email || 'yuanwayco@gmail.com'
+            email:         email       || 'yuanwayco@gmail.com'
         },
         payment_data: {
-            card: { card_token: card_token, holder_name: holder_name || 'Generic Customer' },
+            card: {
+                card_token,
+                holder_name: holder_name || 'Generic Customer'
+            },
             installments: 1
         },
-        terminal_data: {
-            user_order_ip:                        clientIp,
-            user_client_browser_accept_header:    '*/*',
-            user_client_browser_color_depth:      24,
-            user_client_browser_java_enabled:     false,
-            user_client_browser_js_enabled:       true,
-            user_client_browser_language:         'en-US',
-            user_client_browser_screen_height:    1080,
-            user_client_browser_screen_width:     1920,
-            user_client_browser_time_zone_offset: '180',
-            user_client_browser_user_agent:       'Mozilla/5.0 (compatible)'
-        }
+        terminal_data: terminalData
     };
 
     LLPay.pay({
         params: paymentParams,
-        successcb: (result) => res.json({ success: true, data: result }),
+
+        // ✅ الإصلاح الرئيسي: اقرأ وحلّل result.body
+        successcb: async (result) => {
+            const parsed = parseLLBody(result);
+            console.log('[execute-payment] parsed response:', JSON.stringify(parsed));
+
+            // ✅ إذا وُجد order_id، احفظ transaction_id في Supabase
+            if (supabase && order_id) {
+                try {
+                    await supabase
+                        .from('orders')
+                        .update({ transaction_id: currentTxnId })
+                        .eq('id', order_id);
+                    console.log(`[execute-payment] linked order ${order_id} → ${currentTxnId}`);
+                } catch (e) {
+                    console.warn('[execute-payment] supabase link error:', e.message);
+                }
+            }
+
+            // ✅ فحص 3DS: هل يوجد redirect_url؟
+            const redirectUrl = extract3DSUrl(parsed);
+            if (redirectUrl) {
+                console.log('[execute-payment] 3DS required → redirect:', redirectUrl);
+                return res.json({
+                    success:           true,
+                    redirect_required: true,         // الفرونت يتحقق من هذا المفتاح
+                    redirect_url:      redirectUrl,
+                    transaction_id:    currentTxnId,
+                    data:              parsed
+                });
+            }
+
+            // ✅ دفع ناجح مباشرة بدون 3DS
+            console.log('[execute-payment] direct success (no 3DS)');
+            return res.json({
+                success:           true,
+                redirect_required: false,
+                transaction_id:    currentTxnId,
+                data:              parsed
+            });
+        },
+
         failcb: (err) => {
-            console.error('[execute-payment] fail:', err);
-            res.status(400).json({ success: false, error: err });
+            console.error('[execute-payment] fail:', JSON.stringify(err));
+            return res.status(400).json({ success: false, error: err });
         }
     });
 });
 
 // ============================================================
-// WEBHOOK
+// WEBHOOK — ✅ يُحدِّث Supabase عند تأكيد الدفع من LianLian
 // ============================================================
-app.post('/api/webhook/lianlian', (req, res) => {
-    console.log('[webhook] received:', JSON.stringify(req.body));
+app.post('/api/webhook/lianlian', async (req, res) => {
+    const body = req.body;
+    console.log('[webhook] received:', JSON.stringify(body));
+
+    // أرسل الرد لـ LianLian فوراً قبل أي معالجة
     res.json({ code: '200', message: 'success' });
+
+    // استخرج بيانات الدفع
+    const txnId  = body.merchant_transaction_id || body.txn_id || body.order_id;
+    const status = (body.payment_status || body.status || '').toUpperCase();
+
+    console.log(`[webhook] txn=${txnId} status=${status}`);
+
+    // ✅ حدّث Supabase فقط عند نجاح الدفع الفعلي
+    if (txnId && (status === 'PAID' || status === 'SUCCEEDED' || status === 'SUCCESS')) {
+        if (!supabase) {
+            console.warn('[webhook] Supabase غير مهيّأ — لن يُحدَّث الطلب');
+            return;
+        }
+        try {
+            const { data, error } = await supabase
+                .from('orders')
+                .update({
+                    status:         'مدفوع',
+                    paid_at:        new Date().toISOString()
+                })
+                .eq('transaction_id', txnId)
+                .select('id');
+
+            if (error) {
+                console.error('[webhook] supabase update error:', error.message);
+            } else {
+                console.log(`[webhook] ✅ Order(s) updated for txn ${txnId}:`, data?.map(r => r.id));
+            }
+        } catch (e) {
+            console.error('[webhook] unexpected error:', e.message);
+        }
+    } else {
+        console.log(`[webhook] status "${status}" — no Supabase update needed`);
+    }
 });
 
+// ============================================================
+// START SERVER
+// ============================================================
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ Yuanway Gateway (PRODUCTION) listening on port ${PORT}`);
+    console.log(`\n✅ Yuanway Gateway (PRODUCTION) listening on port ${PORT}`);
     console.log(`   Merchant ID:     ${MERCHANT_ID}`);
     console.log(`   Sub-Merchant ID: ${SUB_MERCHANT_ID}`);
+    console.log(`   Supabase:        ${supabase ? '✅ connected' : '⚠️  not configured'}\n`);
 });
