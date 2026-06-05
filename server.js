@@ -244,8 +244,8 @@ app.post('/api/execute-payment', (req, res) => {
     const paymentParams = {
         merchant_transaction_id: currentTxnId,
         notification_url:        'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
-        redirect_url:            'https://yuanway2030.com/payment-methods.html',
-        cancel_url:              'https://yuanway2030.com/payment-methods.html',
+        redirect_url:            'https://yuanway2030.com/payment-methods.html?from_payment=true',
+        cancel_url:              'https://yuanway2030.com/payment-methods.html?from_payment=cancel',
         country:                 'SA',    // ✅ كان 'US' — السعودية
         payment_method:          'inter_credit_card',
         merchant_order: {
