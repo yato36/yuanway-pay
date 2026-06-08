@@ -184,10 +184,16 @@ app.post('/api/get-iframe-token', (req, res) => {
         successcb: (result) => {
             console.log('[get-iframe-token] raw response:', result.body);
             const parsed = parseLLBody(result);
-            const token  = parsed.token || parsed.data?.token || parsed.order;
-            if (token) {
-                return res.json({ success: true, token });
-            }
+            const token = parsed.token || parsed.data?.token || parsed.order;
+const iframeUrl = parsed.iframe_url 
+    || parsed.payment_url 
+    || parsed.data?.iframe_url 
+    || parsed.data?.payment_url 
+    || null;
+
+if (token) {
+    return res.json({ success: true, token, iframe_url: iframeUrl });
+}
             return res.status(400).json({
                 success: false,
                 error:   parsed.return_message || 'No token in response',
