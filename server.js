@@ -350,6 +350,47 @@ app.post('/api/execute-payment', (req, res) => {
 });
 
 // ============================================================
+// INVOICE ROUTES — إنشاء وجلب وتحديث الفواتير
+// ============================================================
+
+// جلب فاتورة بالرقم (للصفحة العامة pay/INV-XXXX)
+app.get('/api/invoice/:invoiceNumber', async (req, res) => {
+    if (!supabase) return res.status(503).json({ success: false, error: 'Supabase not configured' });
+    const { invoiceNumber } = req.params;
+    try {
+        const { data, error } = await supabase
+            .from('invoices')
+            .select('invoice_number, client_name, amount, description, notes, status, created_at, paid_at')
+            .eq('invoice_number', invoiceNumber)
+            .single();
+        if (error || !data) return res.status(404).json({ success: false, error: 'Invoice not found' });
+        res.json({ success: true, invoice: data });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// تحديث حالة فاتورة بعد نجاح الدفع (يُستدعى من Webhook أو يدوياً)
+app.post('/api/invoice/:invoiceNumber/pay', async (req, res) => {
+    if (!supabase) return res.status(503).json({ success: false, error: 'Supabase not configured' });
+    const { invoiceNumber } = req.params;
+    const { transaction_id } = req.body;
+    try {
+        const { data, error } = await supabase
+            .from('invoices')
+            .update({ status: 'paid', paid_at: new Date().toISOString(), transaction_id: transaction_id || null })
+            .eq('invoice_number', invoiceNumber)
+            .select('id, client_name, amount')
+            .single();
+        if (error) throw error;
+        console.log(`[invoice-pay] ✅ Invoice ${invoiceNumber} marked as paid`);
+        res.json({ success: true, invoice: data });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ============================================================
 // WEBHOOK — ✅ يُحدِّث Supabase عند تأكيد الدفع من LianLian
 // ============================================================
 app.post('/api/webhook/lianlian', async (req, res) => {
@@ -372,20 +413,24 @@ app.post('/api/webhook/lianlian', async (req, res) => {
             return;
         }
         try {
-            const { data, error } = await supabase
+            // تحديث جدول orders
+            const { data: orderData, error: orderError } = await supabase
                 .from('orders')
-                .update({
-                    status:         'مدفوع',
-                    paid_at:        new Date().toISOString()
-                })
+                .update({ status: 'مدفوع', paid_at: new Date().toISOString() })
                 .eq('transaction_id', txnId)
                 .select('id');
+            if (orderError) console.error('[webhook] orders update error:', orderError.message);
+            else console.log(`[webhook] ✅ Order(s) updated for txn ${txnId}:`, orderData?.map(r => r.id));
 
-            if (error) {
-                console.error('[webhook] supabase update error:', error.message);
-            } else {
-                console.log(`[webhook] ✅ Order(s) updated for txn ${txnId}:`, data?.map(r => r.id));
-            }
+            // تحديث جدول invoices (إن كان الـ txnId مرتبطاً بفاتورة)
+            const { data: invData, error: invError } = await supabase
+                .from('invoices')
+                .update({ status: 'paid', paid_at: new Date().toISOString(), transaction_id: txnId })
+                .eq('transaction_id', txnId)
+                .select('invoice_number, client_name');
+            if (invError) console.error('[webhook] invoices update error:', invError.message);
+            else if (invData && invData.length) console.log(`[webhook] ✅ Invoice(s) paid:`, invData.map(i => i.invoice_number));
+
         } catch (e) {
             console.error('[webhook] unexpected error:', e.message);
         }
