@@ -125,7 +125,7 @@ app.use((req, res, next) => {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin || '*');
     } else {
-        res.setHeader('Access-Control-Allow-Origin', origin);
+        return res.status(403).json({ error: 'CORS: origin not allowed' });
     }
     res.setHeader('Access-Control-Allow-Methods',     'GET, POST, OPTIONS, PUT, DELETE');
     res.setHeader('Access-Control-Allow-Headers',     'Origin, X-Requested-With, Content-Type, Accept, Authorization');
@@ -225,7 +225,8 @@ app.post('/api/execute-payment', (req, res) => {
         return res.status(400).json({ success: false, error: 'Missing card_token' });
     }
 
-    const currentTxnId  = `TXN_${Date.now()}`;
+    const randSuffix    = Math.random().toString(36).slice(2, 7).toUpperCase();
+    const currentTxnId  = `TXN_${Date.now()}_${randSuffix}`;
     const parsedAmount  = parseFloat(amount) || 10.00;
     const usedCurrency  = currency || 'SAR'; // ✅ SAR افتراضي
     const clientIp      = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || '127.0.0.1';
@@ -255,7 +256,7 @@ app.post('/api/execute-payment', (req, res) => {
         country:                 'SA',    // ✅ كان 'US' — السعودية
         payment_method:          'inter_credit_card',
         merchant_order: {
-            merchant_order_id:   `ORD_${Date.now()}`,
+            merchant_order_id:   `ORD_${Date.now()}_${randSuffix}`,
             merchant_order_time: makeTimestamp(),
             order_amount:        parsedAmount,
             order_currency_code: usedCurrency,
@@ -366,7 +367,7 @@ app.get('/api/invoice/:invoiceNumber', async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('invoices')
-            .select('invoice_number, client_name, amount, description, notes, status, created_at, paid_at')
+            .select('invoice_number, client_name, amount, currency, description, notes, status, created_at, paid_at')
             .eq('invoice_number', invoiceNumber)
             .single();
         if (error || !data) return res.status(404).json({ success: false, error: 'Invoice not found' });
