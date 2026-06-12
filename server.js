@@ -236,17 +236,17 @@ app.post('/api/execute-payment', (req, res) => {
     // ✅ بيانات المتصفح — استخدم الحقيقية من الفرونت إذا وُجدت
     const bd = browser_data || {};
     const terminalData = {
-        user_order_ip:                        clientIp,
-        user_client_browser_accept_header:    bd.accept_header    || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        user_client_browser_color_depth:      parseInt(bd.color_depth)  || 24,
-        user_client_browser_java_enabled:     false,
-        user_client_browser_js_enabled:       true,
-        user_client_browser_language:         bd.language         || 'ar-SA',
-        user_client_browser_screen_height:    parseInt(bd.screen_height) || 900,
-        user_client_browser_screen_width:     parseInt(bd.screen_width)  || 390,
-        user_client_browser_time_zone_offset: bd.tz_offset        || '180',
-        user_client_browser_user_agent:       bd.user_agent       || 'Mozilla/5.0 (compatible)'
-    };
+    user_order_ip:                        clientIp,
+    user_client_browser_accept_header:    bd.accept_header    || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    user_client_browser_color_depth:      parseInt(bd.color_depth)  || 24,
+    user_client_browser_java_enabled:     false,
+    user_client_browser_js_enabled:       true,
+    user_client_browser_language:         bd.language         || 'ar-SA',
+    user_client_browser_screen_height:    parseInt(bd.screen_height) || 900,
+    user_client_browser_screen_width:     parseInt(bd.screen_width)  || 390,
+    user_client_browser_time_zone_offset: bd.tz_offset        || '-180', // ← غيّر '180' إلى '-180'
+    user_client_browser_user_agent:       bd.user_agent       || 'Mozilla/5.0 (compatible)'
+};
 
     const paymentParams = {
     merchant_transaction_id: currentTxnId,
