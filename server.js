@@ -249,28 +249,29 @@ app.post('/api/execute-payment', (req, res) => {
     };
 
     const paymentParams = {
-        merchant_transaction_id: currentTxnId,
-        notification_url:        'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
-        redirect_url:            'https://yuanway2030.com/payment-methods.html?from_payment=true',
-        cancel_url:              'https://yuanway2030.com/payment-methods.html?from_payment=cancel',
-        country:                 'SA',    // ✅ كان 'US' — السعودية
-        payment_method:          'inter_credit_card',
-        merchant_order: {
-            merchant_order_id:   `ORD_${Date.now()}_${randSuffix}`,
-            merchant_order_time: makeTimestamp(),
-            order_amount:        parsedAmount,
-            order_currency_code: usedCurrency,
-            order_description:   'Yuan Way Transaction',
-            products: [{
-                product_id:        '101',
-                sku:               'SKU-101',
-                name:              'Yuanway Product Store',
-                price:             parsedAmount,
-                quantity:          1,
-                url:               'https://yuanway2030.com',
-                shipping_provider: 'other'
-            }]
-        },
+    merchant_transaction_id: currentTxnId,
+    merchant_user_no:        email || `guest_${Date.now()}@yuanway2030.com`, // ← التعديل
+    notification_url:        'https://yuanway-pay-production.up.railway.app/api/webhook/lianlian',
+    redirect_url:            'https://yuanway2030.com/payment-methods.html?from_payment=true',
+    cancel_url:              'https://yuanway2030.com/payment-methods.html?from_payment=cancel',
+    country:                 'SA',
+    payment_method:          'inter_credit_card',
+    merchant_order: {
+        merchant_order_id:   `ORD_${Date.now()}_${randSuffix}`,
+        merchant_order_time: makeTimestamp(),
+        order_amount:        parsedAmount,
+        order_currency_code: usedCurrency,
+        order_description:   'Yuan Way Transaction',
+        products: [{
+            product_id:        '101',
+            sku:               'SKU-101',
+            name:              'Yuanway Product Store',
+            price:             parsedAmount,
+            quantity:          1,
+            url:               'https://yuanway2030.com',
+            shipping_provider: 'other'
+        }]
+    },
         customer: {
             customer_type: 'I',
             first_name:    'Yuanway',
