@@ -284,9 +284,16 @@ app.post('/api/execute-payment', (req, res) => {
                 card_token,
                 holder_name: holder_name || 'Generic Customer'
             },
-            installments: 1
+            installments:        1,
+            // ✅ تعطيل 3DS — يحتاج تفعيل Non-3DS من LianLian على حسابك التجاري
+            authentication_type: 'NO_3DS',
+            three_d_s_type:      0
         },
-        terminal_data: terminalData
+        terminal_data: terminalData,
+        // ✅ تعطيل 3DS على مستوى الطلب
+        risk_control_info: {
+            authentication_type: 'NO_3DS'
+        }
     };
 
     LLPay.pay({
@@ -306,17 +313,11 @@ app.post('/api/execute-payment', (req, res) => {
                     .catch(e => console.warn('[execute-payment] supabase link error:', e.message));
             }
 
-            // فحص 3DS: هل يوجد redirect_url؟
+            // ✅ 3DS معطّل — نتجاهل redirect_url ونكمل كـ دفع مباشر
+            // لإعادة تفعيل 3DS: احذف هذا التعليق واستبدله بالبلوك الأصلي
             const redirectUrl = extract3DSUrl(parsed);
             if (redirectUrl) {
-                console.log('[execute-payment] 3DS required → redirect:', redirectUrl);
-                return res.json({
-                    success:           true,
-                    redirect_required: true,
-                    redirect_url:      redirectUrl,
-                    transaction_id:    currentTxnId,
-                    data:              parsed
-                });
+                console.log('[execute-payment] 3DS redirect ignored (NO_3DS mode):', redirectUrl);
             }
 
             // التحقق من حالة الدفع
