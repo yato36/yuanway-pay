@@ -313,18 +313,28 @@ app.post('/api/execute-payment', (req, res) => {
                     .catch(e => console.warn('[execute-payment] supabase link error:', e.message));
             }
 
-            // ✅ 3DS معطّل — نتجاهل redirect_url ونكمل كـ دفع مباشر
-            // لإعادة تفعيل 3DS: احذف هذا التعليق واستبدله بالبلوك الأصلي
-            const redirectUrl = extract3DSUrl(parsed);
-            if (redirectUrl) {
-                console.log('[execute-payment] 3DS redirect ignored (NO_3DS mode):', redirectUrl);
-            }
+            // ✅ الأساس 2D (NO_3DS)، لكن لو البنك المُصدر فرض 3DS رغم طلبنا
+            // نكمّل عملية التحقق بدل تجاهلها أو اعتبارها فشل
+            const redirectUrl   = extract3DSUrl(parsed);
+            const threeDsStatus = String(
+                parsed['3ds_status']
+                || parsed.order?.['3ds_status']
+                || parsed.data?.['3ds_status']
+                || ''
+            ).toUpperCase();
 
-            // التحقق من حالة الدفع
+            // التحقق من حالة الدفع (يدعم الشكل المسطّح وشكل order.payment_data المتداخل)
             const returnCode = String(parsed.return_code || parsed.code || '').toUpperCase();
-            const status     = String(parsed.status || parsed.payment_status || '').toUpperCase();
+            const status     = String(
+                parsed.status
+                || parsed.payment_status
+                || parsed.order?.payment_data?.payment_status
+                || ''
+            ).toUpperCase();
 
-            if (returnCode && !['000000','200','0000','200000','0'].includes(returnCode)) {
+            const SUCCESS_CODES = ['000000','200','0000','200000','0','SUCCESS'];
+
+            if (returnCode && !SUCCESS_CODES.includes(returnCode)) {
                 console.error('[execute-payment] Payment declined:', returnCode);
                 return res.json({
                     success: false,
@@ -333,7 +343,20 @@ app.post('/api/execute-payment', (req, res) => {
                 });
             }
 
-            if (status === 'WAITING_PAYMENT' || status === 'PENDING' || status === 'WAITING') {
+            // البنك فرض 3DS Challenge → لازم العميل يكمل التحقق عبر هذا الرابط
+            if (threeDsStatus === 'CHALLENGE' && redirectUrl) {
+                console.log('[execute-payment] bank requires 3DS — redirecting:', redirectUrl);
+                return res.json({
+                    success:           true,
+                    redirect_required: true,
+                    redirect_url:      redirectUrl,
+                    transaction_id:    currentTxnId,
+                    data:              parsed
+                });
+            }
+
+            // حالات انتظار/تعليق عامة (بدون رابط تحدي 3DS واضح)
+            if (['WP','WAITING_PAYMENT','PENDING','WAITING'].includes(status)) {
                 return res.json({
                     success: false,
                     error:   'العملية معلقة بانتظار التحقق من البنك.',
@@ -341,8 +364,8 @@ app.post('/api/execute-payment', (req, res) => {
                 });
             }
 
-            // دفع ناجح مباشرة بدون 3DS
-            console.log('[execute-payment] direct success (no 3DS)');
+            // دفع ناجح مباشرة (2D — بدون أي تحدي 3DS)
+            console.log('[execute-payment] direct success (2D / no challenge required)');
             return res.json({
                 success:           true,
                 redirect_required: false,
